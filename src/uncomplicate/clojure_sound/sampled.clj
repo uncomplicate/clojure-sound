@@ -1,9 +1,12 @@
-(ns clojure.uncomplicate-sound.sampled
-  (:require [clojure.string :as str]
+(ns uncomplicate.clojure-sound.sampled
+  (:require [clojure
+             [string :as str]
+             [walk :refer [stringify-keys]]]
             [uncomplicate.commons.core :refer [Releaseable]])
   (:import [javax.sound.sampled AudioSystem AudioFormat AudioInputStream Mixer Mixer$Info Line
             Line$Info DataLine DataLine$Info LineListener Port Port$Info SourceDataLine TargetDataLine Clip DataLine$Info
-            Control$Type AudioPermission AudioFormat AudioFormat$Encoding]))
+            Control$Type AudioPermission AudioFormat AudioFormat$Encoding
+            AudioFileFormat AudioFileFormat$Type]))
 
 (defprotocol Open
   (open [line] [line buffer-size] [line format data offset buffer-size]))
@@ -80,6 +83,13 @@
    true true
    :unsigned false
    false false})
+
+(def audio-file-format
+  {:aifc AudioFileFormat$Type/AIFC
+   :aiff AudioFileFormat$Type/AIFF
+   :au AudioFileFormat$Type/AU
+   :snd AudioFileFormat$Type/SND
+   :wave AudioFileFormat$Type/WAVE})
 
 ;; ===========================
 
@@ -388,7 +398,7 @@
   ([encoding sample-rate sample-size-bits channels frame-size frame-rate endian properties]
    (AudioFormat. (get audio-encoding encoding encoding)
                  sample-rate sample-size-bits channels frame-size frame-rate
-                 (big-endian? endian) properties)))
+                 (big-endian? endian) (stringify-keys properties))))
 
 (defn channels [^AudioFormat format]
   (.getChannels format))
@@ -418,6 +428,39 @@
 
 (defn properties [^AudioFormat format]
   (.properties format))
+
+;; =================== AudioFileFormat =================================================
+
+(defn extension [^AudioFileFormat$Type t]
+  (.getExtension t))
+
+(defn aff-type
+  [^AudioFileFormat aff]
+  (.getType aff)
+  ([name extension])
+  (AudioFileFormat$Type. name extension))
+
+(defn audio-file-format
+  ([type ^long byte-length format ^long frame-length]
+   (AudioFileFormat. type byte-length format frame-length))
+  ([type format ^long frame-length]
+   (AudioFileFormat. type format frame-length))
+  ([type args]
+   (AudioFileFormat. type (:format args) (:frame-length args)
+                     (stringify-keys (dissoc properties :format :frame-length)))))
+
+(defn byte-length [^AudioFileFormat aff]
+  (.getByteLength aff))
+
+(defn format [^AudioFileFormat aff]
+  (.getFormat aff))
+
+(defn frame-length ^long [^AudioFileFormat aff]
+  (.getFrameLength aff))
+
+(defn property [^AudioFileFormat aff key]
+  (.getProperty aff (name key)))
+
 
 ;; =================== User friendly printing ==========================================
 
@@ -453,3 +496,11 @@
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer;")
   [mixers ^java.io.Writer w]
   (.write w (pr-str (seq mixers))))
+
+(defmethod print-method AudioFormat
+  [this ^java.io.Writer w]
+  (.write w (pr-str (bean this))))
+
+(defmethod print-method AudioFileFormat
+  [this ^java.io.Writer w]
+  (.write w (pr-str (bean this))))
