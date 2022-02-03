@@ -1,4 +1,4 @@
-(ns uncomplicate.clojure-sound.sampled
+(ns clojure.uncomplicate-sound.sampled
   (:require [clojure.string :as str]
             [uncomplicate.commons.core :refer [Releaseable]])
   (:import [javax.sound.sampled AudioSystem AudioFormat AudioInputStream Mixer Mixer$Info Line
@@ -112,6 +112,11 @@
     (.open line)
     line))
 
+(extend-type Line$Info
+  Matches
+  (matches? [this other]
+    (.matches this other)))
+
 (defn control
   ([^Line line]
    (.getControls line))
@@ -122,7 +127,7 @@
   ([this]
    (if (keyword? this)
      (port-info this)
-     (.getLineInfo ^Line line)))
+     (.getLineInfo ^Line this)))
   ([line-kind format]
    (DataLine$Info. (get line-key-class line-kind line-kind) format))
   ([line-kind format buffer-size]
@@ -137,12 +142,6 @@
 
 (defn line-class [info]
   (.getLineClass ^Line$Info (get port-info info info)))
-
-(extend-type Line$Info
-  Matches
-  (matches? [this other]
-    (.matches this other)))
-
 
 ;; =================== DataLine ==========================================
 
@@ -267,6 +266,11 @@
 
 ;; =========================== Mixer ===========================================
 
+(extend-type Mixer
+  Supported
+  (supported [this info]
+    (.isLineSupported this (get port-info info info))))
+
 (defn mixer-info
   ([]
    (AudioSystem/getMixerInfo))
@@ -288,11 +292,6 @@
    (AudioSystem/getLine (get port-info info info)))
   ([^Mixer mixer info]
    (.getLine mixer (get port-info info info))))
-
-(extend-type Mixer
-  Supported
-  (supported [this info]
-    (.isLineSupported this (get port-info info info))))
 
 (defn source-info
   ([this]
@@ -329,16 +328,16 @@
    (.isSynchronizationSupported mixer (if (sequential? lines) (into-array Line lines) lines)
                                 maintain-sync?)))
 
+(extend-type (Class/forName "[Ljavax.sound.sampled.Line;")
+  Supported
+  (supported [lines mixer]
+    (sync-supported? mixer lines true)))
+
 (defn sync! [^Mixer mixer! lines maintain-sync?]
   (.synchronize mixer! (if (sequential? lines) (into-array Line lines) lines) maintain-sync?))
 
 (defn unsync! [^Mixer mixer! lines]
   (.unsynchronize mixer! (if (sequential? lines) (into-array Line lines) lines)))
-
-(extend-type (Class/forName "[Ljavax.sound.sampled.Line;")
-  Supported
-  (supported [lines mixer]
-    (sync-supported? mixer lines true)))
 
 ;; ====================== AudioPermission ======================================
 
@@ -364,20 +363,32 @@
   (.write w (pr-str (bean format))))
 
 (defn audio-format
-  ([^DataLine line]
-   (.getFormat line))
+  ([from]
+   (if (instance? DataLine from)
+     (.getFormat ^DataLine from)
+     (let [{:keys [encoding sample-rate sample-size-bits channels frame-size frame-rate signed endian properties]
+            :or {channels 1 endian :little-endian signed :signed}} from]
+       (if encoding
+         (if properties
+           (audio-format encoding sample-rate sample-size-bits channels frame-size
+                         frame-rate endian properties)
+           (audio-format encoding sample-rate sample-size-bits channels frame-size frame-rate))
+         (audio-format sample-rate sample-size-bits channels signed endian)))))
   ([sample-rate sample-size-bits]
    (audio-format sample-rate sample-size-bits 1 :signed :little-endian))
   ([sample-rate sample-size-bits channels]
    (audio-format sample-rate sample-size-bits channels :signed :little-endian))
   ([sample-rate sample-size-bits channels signed endian]
-   (AudioFormat. sample-rate sample-size-bits channels (signed? signed) (big-endian? endian)))
+   (AudioFormat. sample-rate sample-size-bits channels
+                 (signed? signed) (big-endian? endian)))
   ([encoding sample-rate sample-size-bits channels frame-size frame-rate endian]
    (AudioFormat. (get audio-encoding encoding encoding)
-                 sample-rate sample-size-bits channels frame-size frame-rate (big-endian? endian)))
+                 sample-rate sample-size-bits channels frame-size frame-rate
+                 (big-endian? endian)))
   ([encoding sample-rate sample-size-bits channels frame-size frame-rate endian properties]
-   (AudioFormat. (get audio-encoding encoding encoding) sample-rate sample-size-bits
-                 channels frame-size frame-rate (big-endian? endian) properties)))
+   (AudioFormat. (get audio-encoding encoding encoding)
+                 sample-rate sample-size-bits channels frame-size frame-rate
+                 (big-endian? endian) properties)))
 
 (defn channels [^AudioFormat format]
   (.getChannels format))
