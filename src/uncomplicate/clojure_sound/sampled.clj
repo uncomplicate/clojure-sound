@@ -1,7 +1,8 @@
 (ns uncomplicate.clojure-sound.sampled
-  (:require [uncomplicate.commons.core :refer [Releaseable]])
+  (:require [clojure.string :as str]
+            [uncomplicate.commons.core :refer [Releaseable]])
   (:import [javax.sound.sampled AudioSystem AudioFormat AudioInputStream Mixer Mixer$Info Line
-            Line$Info DataLine DataLine$Info LineListener Port$Info SourceDataLine TargetDataLine Clip DataLine$Info
+            Line$Info DataLine DataLine$Info LineListener Port Port$Info SourceDataLine TargetDataLine Clip DataLine$Info
             Control$Type AudioPermission AudioFormat AudioFormat$Encoding]))
 
 (defprotocol Open
@@ -12,6 +13,15 @@
 
 (defprotocol Matches
   (matches? [this other]))
+
+(defn name-key [s]
+  (-> (str/trim s)
+      (str/replace " " "")
+      str/lower-case
+      (str/replace "_" "-")
+      keyword))
+
+;; ===================== Keyword coding ================================================
 
 (def port-info
   {:microphone Port$Info/MICROPHONE
@@ -26,12 +36,25 @@
    :compact-disc Port$Info/COMPACT_DISC
    :cd Port$Info/COMPACT_DISC})
 
-(def data-line
+(def line-key-class
   {:target TargetDataLine
    :target-data-line TargetDataLine
    :source SourceDataLine
    :source-data-line SourceDataLine
-   :clip Clip})
+   :clip Clip
+   :port Port
+   :mixer Mixer
+   :line Line
+   :data-line DataLine})
+
+(def line-class-key
+  {TargetDataLine :target
+   SourceDataLine :source
+   Clip :clip
+   Port :port
+   Mixer :mixer
+   Line :line
+   DataLine :data-line})
 
 (def audio-encoding
   {:alaw AudioFormat$Encoding/ALAW
@@ -57,6 +80,8 @@
    true true
    :unsigned false
    false false})
+
+;; ===========================
 
 (extend-type Control$Type
   Supported
@@ -99,11 +124,11 @@
      (port-info this)
      (.getLineInfo ^Line line)))
   ([line-kind format]
-   (DataLine$Info. (get data-line line-kind line-kind) format))
+   (DataLine$Info. (get line-key-class line-kind line-kind) format))
   ([line-kind format buffer-size]
-   (DataLine$Info. (get data-line line-kind line-kind) format buffer-size))
+   (DataLine$Info. (get line-key-class line-kind line-kind) format buffer-size))
   ([line-kind formats min-buffer-size max-buffer-size]
-   (DataLine$Info. (get data-line line-kind line-kind)
+   (DataLine$Info. (get line-key-class line-kind line-kind)
                    (if (sequential? formats) (into-array AudioFormat formats) formats)
                    min-buffer-size max-buffer-size)))
 
@@ -118,25 +143,6 @@
   (matches? [this other]
     (.matches this other)))
 
-(defmethod print-method Line$Info
-  [info ^java.io.Writer w]
-  (.write w (pr-str (bean info))))
-
-(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Line$Info;")
-  [info ^java.io.Writer w]
-  (.write w (pr-str (seq info))))
-
-(defmethod print-method (Class/forName "[Ljavax.sound.sampled.DataLine$Info;")
-  [info ^java.io.Writer w]
-  (.write w (pr-str (seq info))))
-
-(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Port$Info;")
-  [info ^java.io.Writer w]
-  (.write w (pr-str (seq info))))
-
-(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Line;")
-  [lines ^java.io.Writer w]
-  (.write w (pr-str (seq lines))))
 
 ;; =================== DataLine ==========================================
 
@@ -251,6 +257,14 @@
 (defn read! ^long [^TargetDataLine line  ^bytes array! ^long offset, ^long length]
   (.read line array! offset length))
 
+;; =========================== Port ============================================
+
+(defn port-name [^Port$Info port]
+  (.getName port))
+
+(defn source? [^Port$Info port]
+  (.isSource port))
+
 ;; =========================== Mixer ===========================================
 
 (defn mixer-info
@@ -259,17 +273,6 @@
   ([^Mixer mixer]
    (.getMixerInfo mixer)))
 
-(defmethod print-method Mixer$Info
-  [info ^java.io.Writer w]
-  (.write w (pr-str (bean info))))
-
-(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer$Info;")
-  [info ^java.io.Writer w]
-  (.write w (pr-str (seq info))))
-
-(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer;")
-  [mixers ^java.io.Writer w]
-  (.write w (pr-str (seq mixers))))
 
 (defn mixer
   ([]
@@ -348,6 +351,18 @@
 
 ;; ================== AudioFormat ======================================
 
+(extend-type AudioFormat
+  Supported
+  (supported [this line]
+    (.isFormatSupported ^DataLine$Info line this))
+  Matches
+  (matches? [this other]
+    (.matches this other)))
+
+(defmethod print-method AudioFormat
+  [format ^java.io.Writer w]
+  (.write w (pr-str (bean format))))
+
 (defn audio-format
   ([^DataLine line]
    (.getFormat line))
@@ -393,14 +408,37 @@
 (defn properties [^AudioFormat format]
   (.properties format))
 
-(extend-type AudioFormat
-  Supported
-  (supported [this line]
-    (.isFormatSupported ^DataLine$Info line this))
-  Matches
-  (matches? [this other]
-    (.matches this other)))
+;; =================== User friendly printing ==========================================
 
-(defmethod print-method AudioFormat
-  [format ^java.io.Writer w]
-  (.write w (pr-str (bean format))))
+(defmethod print-method Line$Info
+  [info ^java.io.Writer w]
+  (.write w (pr-str (-> (bean info) (dissoc :class)
+                        (update :lineClass line-class-key)))))
+
+(defmethod print-method Mixer$Info
+  [info ^java.io.Writer w]
+  (.write w (pr-str (bean info))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer$Info;")
+  [info ^java.io.Writer w]
+  (.write w (pr-str (seq info))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Line$Info;")
+  [info ^java.io.Writer w]
+  (.write w (pr-str (seq info))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.DataLine$Info;")
+  [info ^java.io.Writer w]
+  (.write w (pr-str (seq info))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Port$Info;")
+  [info ^java.io.Writer w]
+  (.write w (pr-str (seq info))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Line;")
+  [lines ^java.io.Writer w]
+  (.write w (pr-str (seq lines))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer;")
+  [mixers ^java.io.Writer w]
+  (.write w (pr-str (seq mixers))))
