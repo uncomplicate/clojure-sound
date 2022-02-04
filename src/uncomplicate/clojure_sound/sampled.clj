@@ -3,7 +3,9 @@
              [string :as str]
              [walk :refer [stringify-keys]]]
             [uncomplicate.commons.core :refer [Releaseable]])
-  (:import [javax.sound.sampled AudioSystem AudioFormat AudioInputStream Mixer Mixer$Info Line
+  (:import java.net.URL
+           [java.io File InputStream OutputStream]
+           [javax.sound.sampled AudioSystem AudioFormat AudioInputStream Mixer Mixer$Info Line
             Line$Info DataLine DataLine$Info LineListener Port Port$Info SourceDataLine TargetDataLine Clip DataLine$Info
             Control$Type AudioPermission AudioFormat AudioFormat$Encoding
             AudioFileFormat AudioFileFormat$Type]))
@@ -11,11 +13,20 @@
 (defprotocol Open
   (open [line] [line buffer-size] [line format data offset buffer-size]))
 
-(defprotocol Supported
-  (supported [feature line]))
+(defprotocol Support
+  (supported [feature] [feature object]))
 
 (defprotocol Matches
   (matches? [this other]))
+
+(defprotocol Format
+  (get-format [this]))
+
+(defprotocol AudioSystemProcedures
+  (afile-format [this])
+  (audio-input-stream [this] [target-format source-stream])
+  (target-encodings [this] [target-format source-stream])
+  (conversion-supported? [target source]))
 
 (defn name-key [s]
   (-> (str/trim s)
@@ -84,33 +95,73 @@
    :unsigned false
    false false})
 
-(def audio-file-format
+(def audio-file-format-type
   {:aifc AudioFileFormat$Type/AIFC
    :aiff AudioFileFormat$Type/AIFF
    :au AudioFileFormat$Type/AU
    :snd AudioFileFormat$Type/SND
    :wave AudioFileFormat$Type/WAVE})
 
-;; ===========================
-
 (extend-type Control$Type
-  Supported
+  Support
   (supported [this line]
     (.isControlSupported ^Line line this)))
 
+;; =========================== AudioSystem ====================================
+
+(extend-protocol AudioSystemProcedures
+  File
+  (afile-format [file]
+    (AudioSystem/getAudioFileFormat file))
+  (audio-input-stream [file]
+    (AudioSystem/getAudioInputStream file))
+  InputStream
+  (afile-format [stream]
+    (AudioSystem/getAudioFileFormat stream))
+  (audio-input-stream [stream]
+    (AudioSystem/getAudioInputStream stream))
+  URL
+  (afile-format [url]
+    (AudioSystem/getAudioFileFormat url))
+  (audio-input-stream [url]
+    (AudioSystem/getAudioInputStream url))
+  AudioFormat
+  (audio-input-stream [target source]
+    (AudioSystem/getAudioInputStream target ^AudioInputStream source))
+  (target-encodings [source]
+    (AudioSystem/getTargetEncodings source))
+  (conversion-supported? [target source]
+    (AudioSystem/isConversionSupported target ^AudioFormat source))
+  AudioFormat$Encoding
+  (audio-input-stream [target source]
+    (AudioSystem/getAudioInputStream target ^AudioInputStream source))
+  (target-encodings [source]
+    (AudioSystem/getTargetEncodings source))
+  (conversion-supported? [target source]
+    (AudioSystem/isConversionSupported target ^AudioFormat source)))
+
+(defn audio-file-types [^AudioInputStream stream]
+  (AudioSystem/getAudioFileTypes stream))
+
+(defn target-data-line
+  ([^AudioFormat format]
+   (AudioSystem/getTargetDataLine format))
+  ([^AudioFormat format ^Mixer$Info mixer-info]
+   (AudioSystem/getTargetDataLine format mixer-info)))
+
+(defn target-formats [encoding source-format]
+  (AudioSystem/getTargetFormats encoding source-format))
+
+(defn target-line-info [^Line$Info info]
+  (AudioSystem/getTargetLineInfo info))
+
 (defn supported?
-  ([info]
-   (AudioSystem/isLineSupported (get port-info info info)))
-  ([line feature]
-   (supported feature line)))
+  ([feature]
+   (supported feature))
+  ([this feature]
+   (supported feature this)))
 
 ;; =========================== Line ============================================
-
-(defn add-listener! [^Line line! listener]
-  (.addLineListener line! listener))
-
-(defn remove-listener! [^Line line! listener]
-  (.removeLineListener line! listener))
 
 (extend-type Line
   Releaseable
@@ -125,7 +176,16 @@
 (extend-type Line$Info
   Matches
   (matches? [this other]
-    (.matches this other)))
+    (.matches this other))
+  Support
+  (supported [info]
+    (AudioSystem/isLineSupported (get port-info info info))))
+
+(defn add-listener! [^Line line! listener]
+  (.addLineListener line! listener))
+
+(defn remove-listener! [^Line line! listener]
+  (.removeLineListener line! listener))
 
 (defn control
   ([^Line line]
@@ -212,6 +272,12 @@
     (.open clip ^AudioFormat format data offset buffer-size)
     clip))
 
+(defn clip
+  ([]
+   (AudioSystem/getClip))
+  ([^Mixer$Info mixer-info]
+   (AudioSystem/getClip mixer-info)))
+
 (defn frame-length ^long [^Clip clip]
   (.getFrameLength clip))
 
@@ -240,6 +306,11 @@
 
 ;; ====================== SourceDataLine =================================================
 
+(extend-type DataLine
+  Format
+  (get-format [this]
+    (.getFormat this)))
+
 (extend-type SourceDataLine
   Open
   (open [line format]
@@ -249,8 +320,13 @@
     (.open line ^AudioFormat format buffer-size)
     line))
 
-(defn write! ^long [^SourceDataLine line! ^bytes array ^long offset, ^long length]
-  (.write line! array offset length))
+(defn write!
+  (^long [^AudioInputStream stream ^AudioFileFormat$Type file-type out]
+   (if (instance? File out)
+     (AudioSystem/write stream file-type ^File out)
+     (AudioSystem/write stream file-type ^OutputStream out)))
+  (^long [^SourceDataLine line! ^bytes array ^long offset, ^long length]
+   (.write line! array offset length)))
 
 ;; ====================== TargetDataLine =================================================
 
@@ -368,14 +444,9 @@
   (matches? [this other]
     (.matches this other)))
 
-(defmethod print-method AudioFormat
-  [format ^java.io.Writer w]
-  (.write w (pr-str (bean format))))
-
 (defn audio-format
   ([from]
-   (if (instance? DataLine from)
-     (.getFormat ^DataLine from)
+   (if (map? from)
      (let [{:keys [encoding sample-rate sample-size-bits channels frame-size frame-rate signed endian properties]
             :or {channels 1 endian :little-endian signed :signed}} from]
        (if encoding
@@ -383,7 +454,8 @@
            (audio-format encoding sample-rate sample-size-bits channels frame-size
                          frame-rate endian properties)
            (audio-format encoding sample-rate sample-size-bits channels frame-size frame-rate))
-         (audio-format sample-rate sample-size-bits channels signed endian)))))
+         (audio-format sample-rate sample-size-bits channels signed endian)))
+     (get-format from)))
   ([sample-rate sample-size-bits]
    (audio-format sample-rate sample-size-bits 1 :signed :little-endian))
   ([sample-rate sample-size-bits channels]
@@ -431,35 +503,53 @@
 
 ;; =================== AudioFileFormat =================================================
 
+(extend-type AudioFileFormat
+  Format
+  (get-format [this]
+    (.getFormat this))
+  Support
+  (supported [type]
+    (AudioSystem/isLineSupported (get audio-file-format-type type type))))
+
+(extend-type AudioFileFormat$Type
+  Support
+  (supported [feature stream]
+    (AudioSystem/isFileTypeSupported (get audio-file-format-type feature feature) stream)))
+
 (defn extension [^AudioFileFormat$Type t]
   (.getExtension t))
 
 (defn aff-type
-  [^AudioFileFormat aff]
-  (.getType aff)
+  [aff]
+  (if (instance? AudioFileFormat aff)
+    (.getType ^AudioFileFormat aff)
+    (audio-file-format-type aff))
   ([name extension])
   (AudioFileFormat$Type. name extension))
 
 (defn audio-file-format
+  ([this]
+   (afile-format this))
   ([type ^long byte-length format ^long frame-length]
-   (AudioFileFormat. type byte-length format frame-length))
+   (AudioFileFormat. (get audio-file-format-type type type) byte-length format frame-length))
   ([type format ^long frame-length]
-   (AudioFileFormat. type format frame-length))
+   (AudioFileFormat. (get audio-file-format-type type type) format frame-length))
   ([type args]
-   (AudioFileFormat. type (:format args) (:frame-length args)
+   (AudioFileFormat. (get audio-file-format-type type type)
+                     (:format args) (:frame-length args)
                      (stringify-keys (dissoc properties :format :frame-length)))))
 
 (defn byte-length [^AudioFileFormat aff]
   (.getByteLength aff))
-
-(defn format [^AudioFileFormat aff]
-  (.getFormat aff))
 
 (defn frame-length ^long [^AudioFileFormat aff]
   (.getFrameLength aff))
 
 (defn property [^AudioFileFormat aff key]
   (.getProperty aff (name key)))
+
+;; =================== AudioInputStream ================================================
+
 
 
 ;; =================== User friendly printing ==========================================
@@ -504,3 +594,11 @@
 (defmethod print-method AudioFileFormat
   [this ^java.io.Writer w]
   (.write w (pr-str (bean this))))
+
+(defmethod print-method AudioFormat$Encoding
+  [info ^java.io.Writer w]
+  (.write w (pr-str (name-key info))))
+
+(defmethod print-method AudioFileFormat$Type
+  [info ^java.io.Writer w]
+  (.write w (pr-str (name-key info))))
