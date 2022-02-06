@@ -1,8 +1,9 @@
 (ns uncomplicate.clojure-sound.sampled
-  (:require [clojure
-             [string :as str]
-             [walk :refer [stringify-keys]]]
-            [uncomplicate.commons.core :refer [Releaseable]])
+  (:require [clojure.walk :refer [stringify-keys]]
+            [uncomplicate.commons.core :refer [Releaseable]]
+            [uncomplicate.clojure-sound
+             [internal :refer [name-key Support]]
+             [core :refer [write!]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
@@ -14,9 +15,6 @@
 
 (defprotocol Open
   (open [line] [line buffer-size] [line format data offset buffer-size]))
-
-(defprotocol Support
-  (supported [feature] [feature object]))
 
 (defprotocol Matches
   (matches? [this other]))
@@ -46,13 +44,6 @@
 
 (defprotocol Name
   (get-name [this]))
-
-(defn name-key [s]
-  (-> (str/trim s)
-      (str/replace " " "")
-      str/lower-case
-      (str/replace "_" "-")
-      keyword))
 
 ;; ===================== Keyword coding ================================================
 
@@ -194,12 +185,6 @@
 (defn target-line-info [^Line$Info info]
   (AudioSystem/getTargetLineInfo info))
 
-(defn supported?
-  ([feature]
-   (supported feature))
-  ([this feature]
-   (supported feature this)))
-
 ;; =========================== Line ============================================
 
 (extend-type Line
@@ -326,7 +311,7 @@
   (open [clip format data offset buffer-size]
     (.open clip ^AudioFormat format data offset buffer-size)
     clip)
-  FrameLength
+  Frame
   (frame-length [clip]
     (.getFrameLength clip)))
 
@@ -370,13 +355,17 @@
     (.open line ^AudioFormat format buffer-size)
     line))
 
-(defn write!
-  (^long [^AudioInputStream stream ^AudioFileFormat$Type file-type out]
-   (if (instance? File out)
-     (AudioSystem/write stream file-type ^File out)
-     (AudioSystem/write stream file-type ^OutputStream out)))
-  (^long [^SourceDataLine line! ^bytes array ^long offset, ^long length]
-   (.write line! array offset length)))
+(defmethod write! [AudioInputStream File]
+  [in out! file-type]
+  (AudioSystem/write ^AudioInputStream in ^AudioFileFormat$Type file-type ^File out!))
+
+(defmethod write! [AudioInputStream OutputStream]
+  [in out! file-type]
+  (AudioSystem/write ^AudioInputStream in ^AudioFileFormat$Type file-type ^OutputStream out!))
+
+(defmethod write! [(Class/forName "[B") SourceDataLine]
+  [byte-arr line! offset length]
+  (.write ^SourceDataLine line! byte-arr offset length))
 
 ;; ====================== TargetDataLine =================================================
 
@@ -402,7 +391,7 @@
 ;; =========================== Mixer ===========================================
 
 (extend-type Mixer
-  Supported
+  Support
   (supported [this info]
     (.isLineSupported this (get port-info info info))))
 
@@ -470,7 +459,7 @@
                                 maintain-sync?)))
 
 (extend-type (Class/forName "[Ljavax.sound.sampled.Line;")
-  Supported
+  Support
   (supported [lines mixer]
     (sync-supported? mixer lines true)))
 
@@ -504,7 +493,7 @@
 ;; ================== AudioFormat ======================================
 
 (extend-type AudioFormat
-  Supported
+  Support
   (supported [this line]
     (.isFormatSupported ^DataLine$Info line this))
   Matches
@@ -576,7 +565,10 @@
     (.getFormat this))
   Support
   (supported [type]
-    (AudioSystem/isLineSupported (get audio-file-format-type type type))))
+    (AudioSystem/isLineSupported (get audio-file-format-type type type)))
+  Frame
+  (frame-length [clip]
+    (.getFrameLength clip)))
 
 (extend-type AudioFileFormat$Type
   Support
@@ -609,9 +601,6 @@
 (defn byte-length [^AudioFileFormat aff]
   (.getByteLength aff))
 
-(defn frame-length ^long [^AudioFileFormat aff]
-  (.getFrameLength aff))
-
 (defn property [^AudioFileFormat aff key]
   (.getProperty aff (name key)))
 
@@ -636,7 +625,7 @@
   (^long [^InputStream stream ^bytes array! ^long offset, ^long length]
    (.read stream array! offset length)))
 
-(defn reset! [^InputStream stream!]
+(defn re-set! [^InputStream stream!]
   (.reset stream!)
   stream!)
 
@@ -653,7 +642,7 @@
   Format
   (get-format [this]
     (.getFormat this))
-  FrameLength
+  Frame
   (frame-length [clip]
     (.getFrameLength clip)))
 
@@ -772,10 +761,6 @@
 (defmethod print-method Mixer$Info
   [info ^java.io.Writer w]
   (.write w (pr-str (bean info))))
-
-(defmethod print-method (Class/forName "[Ljava.lang.Object;")
-  [objects ^java.io.Writer w]
-  (.write w (pr-str (seq objects))))
 
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer$Info;")
