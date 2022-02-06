@@ -3,7 +3,7 @@
             [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support]]
-             [core :refer [write! Info InfoProvider Open Timestamp]]])
+             [core :refer [write! Info InfoProvider Open Timestamp Reset]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
@@ -614,7 +614,11 @@
     (.available stream))
   Support
   (supported [stream]
-    (.markSupported stream)))
+    (.markSupported stream))
+  Reset
+  (re-set! [stream!]
+    (.reset stream!)
+    stream!))
 
 (defn mark! [^InputStream stream! ^long read-limit]
   (.mark stream! read-limit))
@@ -626,10 +630,6 @@
    (.read stream array!))
   (^long [^InputStream stream ^bytes array! ^long offset, ^long length]
    (.read stream array! offset length)))
-
-(defn re-set! [^InputStream stream!]
-  (.reset stream!)
-  stream!)
 
 (defn skip! [^InputStream stream! long n]
   (.skip stream! n))

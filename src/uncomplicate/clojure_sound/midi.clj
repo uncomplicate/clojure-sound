@@ -3,7 +3,7 @@
   (:require [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support]]
-             [core :refer [write! Info InfoProvider Open Timestamp]]])
+             [core :refer [write! Info InfoProvider Open Timestamp Reset]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.midi MidiSystem MidiDevice MidiDevice$Info MidiFileFormat MidiChannel
@@ -147,7 +147,114 @@
 
 ;; ============================= MidiChannel ================================
 
+(extend-type MidiChannel
+  Reset
+  (re-set! [channel!]
+    (.resetAllControllers channel!)
+    channel!))
 
+(defn off!
+  ([^MidiChannel channel!]
+   (.allNotesOff channel!)
+   channel!)
+  ([^MidiChannel channel! ^long note]
+   (.noteOff channel! note)
+   channel!)
+  ([^MidiChannel channel! ^long note ^long velocity]
+   (.noteOff channel! note velocity)
+   channel!))
+
+(defn on! [^MidiChannel channel! ^long note ^long velocity]
+  (.noteOff channel! note velocity)
+  channel!)
+
+(defn sound-off [^MidiChannel channel!]
+  (.allSoundOff channel!)
+  channel!)
+
+(defn pressure
+  (^long [^MidiChannel channel!]
+   (.getChannelPressure channel!))
+  (^long [^MidiChannel channel! ^long note]
+   (.getPolyPressure channel! note)))
+
+(defn pressure! [^MidiChannel channel! ^long pressure]
+  (.setChannelPressure channel! pressure)
+  channel!)
+
+(defn controller ^long [^MidiChannel channel! ^long controller]
+  (.getController channel! controller))
+
+(defn mono [^MidiChannel channel!]
+  (.getMono channel!))
+
+(defn mono!
+  ([^MidiChannel channel!]
+   (.setMono channel! true)
+   channel!)
+  ([^MidiChannel channel! on]
+   (.setMono channel! on)
+   channel!))
+
+(defn mute [^MidiChannel channel!]
+  (.getMute channel!))
+
+(defn mute!
+  ([^MidiChannel channel!]
+   (.setMute channel! true)
+   channel!)
+  ([^MidiChannel channel! mute]
+   (.setMute channel! mute)
+   channel!))
+
+(defn omni [^MidiChannel channel!]
+  (.getOmni channel!))
+
+(defn omni!
+  ([^MidiChannel channel!]
+   (.setOmni channel! true)
+   channel!)
+  ([^MidiChannel channel! on]
+   (.setOmni channel! on)
+   channel!))
+
+(defn bend ^long [^MidiChannel channel!]
+  (.getPitchBend channel!))
+
+(defn bend! [^MidiChannel channel! bend]
+  (.setPitchBend channel! bend)
+  channel!)
+
+(defn program ^long [^MidiChannel channel!]
+  (.getProgram channel!))
+
+(defn solo [^MidiChannel channel!]
+  (.getSolo channel!))
+
+(defn solo
+  ([^MidiChannel channel!]
+   (.setSolo channel! true)
+   channel!)
+  ([^MidiChannel channel! on]
+   (.setSolo channel! on)
+   channel!))
+
+(defn control!
+  ([^MidiChannel channel! on]
+   (.localControl channel! on))
+  ([^MidiChannel channel! ^long controller ^long val]
+   (.controlChange channel! controller val)
+   channel!))
+
+(defn patch!
+  ([^MidiChannel channel! ^long bank ^long program]
+   (.programChange channel! bank program)
+   channel!)
+  ([^MidiChannel channel! ^long program]
+   (.programChange channel! program)
+   channel!))
+
+(def program! patch!)
 
 ;; =================== User friendly printing ==========================================
 

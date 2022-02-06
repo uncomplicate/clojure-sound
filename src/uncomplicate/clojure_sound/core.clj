@@ -24,6 +24,9 @@
 (defprotocol Timestamp
   (ms-position [this]))
 
+(defprotocol Reset
+  (re-set! [this]))
+
 (defn supported?
   ([feature]
    (supported feature))
