@@ -3,7 +3,7 @@
             [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support]]
-             [core :refer [write!]]])
+             [core :refer [write! Info InfoProvider Open Timestamp]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
@@ -12,9 +12,6 @@
             Control$Type Control BooleanControl BooleanControl$Type CompoundControl EnumControl
             EnumControl$Type FloatControl FloatControl$Type LineListener LineEvent LineEvent$Type
             ReverbType]))
-
-(defprotocol Open
-  (open [line] [line buffer-size] [line format data offset buffer-size]))
 
 (defprotocol Matches
   (matches? [this other]))
@@ -41,9 +38,6 @@
 
 (defprotocol GetType
   (get-type [this]))
-
-(defprotocol Name
-  (get-name [this]))
 
 ;; ===================== Keyword coding ================================================
 
@@ -195,7 +189,12 @@
   Open
   (open [line]
     (.open line)
-    line))
+    line)
+  (open? [line]
+    (.isOpen line))
+  InfoProvider
+  (info [this]
+    (.getLineInfo this)))
 
 (extend-type Line$Info
   Matches
@@ -224,9 +223,6 @@
    (DataLine$Info. (get line-key-class line-kind line-kind)
                    (if (sequential? formats) (into-array AudioFormat formats) formats)
                    min-buffer-size max-buffer-size)))
-
-(defn open? [^Line line]
-  (.isOpen line))
 
 (defn line-class [info]
   (.getLineClass ^Line$Info (get port-info info info)))
@@ -259,7 +255,10 @@
     (.getLongFramePosition line))
   Available
   (available [line]
-    (.available line)))
+    (.available line))
+  Timestamp
+  (ms-position [line]
+    (.getMicrosecondPosition line)))
 
 (defn formats [^DataLine$Info info]
   (.getFormats info))
@@ -280,9 +279,6 @@
 
 (defn buffer-size ^long [^DataLine line]
   (.getBufferSize line))
-
-(defn microsecond-position ^long [^DataLine line]
-  (.getMicrosecondPosition line))
 
 (defn level ^double [^DataLine line]
   (.getLevel line))
@@ -381,8 +377,8 @@
 ;; =========================== Port ============================================
 
 (extend-type Port$Info
-  Name
-  (get-name [info]
+  Info
+  (myname [info]
     (.getName info)))
 
 (defn source? [^Port$Info port]
@@ -390,15 +386,33 @@
 
 ;; =========================== Mixer ===========================================
 
+(extend-type Mixer$Info
+  Info
+  (description [info]
+    (.getDescription info))
+  (myname [info]
+    (.getName info))
+  (vendor [info]
+    (.getVendor info))
+  (version [info]
+    (.getVersion info)))
+
 (extend-type Mixer
   Support
   (supported [this info]
-    (.isLineSupported this (get port-info info info))))
-
-(extend-type Mixer$Info
-  Name
-  (get-name [info]
-    (.getName info)))
+    (.isLineSupported this (get port-info info info)))
+  InfoProvider
+  (info [mixer]
+    (.getMixerInfo mixer))
+  Info
+  (description [mixer]
+    (.getDescription (.getMixerInfo mixer)))
+  (myname [mixer]
+    (.getName (.getMixerInfo mixer)))
+  (vendor [mixer]
+    (.getVendor (.getMixerInfo mixer)))
+  (version [mixer]
+    (.getVersion (.getMixerInfo mixer))))
 
 (defn mixer-info
   ([]
@@ -468,18 +482,6 @@
 
 (defn unsync! [^Mixer mixer! lines]
   (.unsynchronize mixer! (if (sequential? lines) (into-array Line lines) lines)))
-
-(defn description [^Mixer$Info info]
-  (.getDescription info))
-
-(defn description [^Mixer$Info info]
-  (.getDescription info))
-
-(defn vendor [^Mixer$Info mixer]
-  (.getVendor mixer))
-
-(defn version [^Mixer$Info mixer]
-  (.getVersion mixer))
 
 ;; ====================== AudioPermission ======================================
 
@@ -732,8 +734,8 @@
 ;; =================== ReverbType  =====================================================
 
 (extend-type ReverbType
-  Name
-  (get-name [reverb]
+  Info
+  (myname [reverb]
     (.getName reverb)))
 
 (defn decay-time ^long [^ReverbType reverb]
@@ -761,7 +763,6 @@
 (defmethod print-method Mixer$Info
   [info ^java.io.Writer w]
   (.write w (pr-str (bean info))))
-
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer$Info;")
   [info ^java.io.Writer w]

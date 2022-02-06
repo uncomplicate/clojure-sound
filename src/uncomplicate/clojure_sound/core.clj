@@ -8,6 +8,22 @@
             MidiMessage Patch Sequence Sequencer$SyncMode ShortMessage SoundbankResource
             SysexMessage Track VoiceStatus]))
 
+(defprotocol Info
+  (description [this])
+  (myname [this])
+  (vendor [this])
+  (version [this]))
+
+(defprotocol InfoProvider
+  (info [this]))
+
+(defprotocol Open
+  (open [this] [this buffer-size] [this format data offset buffer-size])
+  (open? [this]))
+
+(defprotocol Timestamp
+  (ms-position [this]))
+
 (defn supported?
   ([feature]
    (supported feature))

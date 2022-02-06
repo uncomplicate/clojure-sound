@@ -3,7 +3,7 @@
   (:require [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support]]
-             [core :refer [write!]]])
+             [core :refer [write! Info InfoProvider Open Timestamp]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.midi MidiSystem MidiDevice MidiDevice$Info MidiFileFormat MidiChannel
@@ -13,7 +13,7 @@
             SysexMessage Track VoiceStatus]))
 
 (defprotocol MidiSystemProcedures
-  (mfile-format [this])
+  (file-format [this])
   (sequence [this])
   (soundbank [this]))
 
@@ -91,3 +91,70 @@
 (defmethod write! [Sequence OutputStream]
   [in out! file-type]
   (MidiSystem/write ^Sequence in ^long file-type ^OutputStream out!))
+
+;; ============================= MidiDevice ================================
+
+(extend-type MidiDevice$Info
+  Info
+  (description [info]
+    (.getDescription info))
+  (myname [info]
+    (.getName info))
+  (vendor [info]
+    (.getVendor info))
+  (version [info]
+    (.getVersion info)))
+
+(extend-type MidiDevice
+  InfoProvider
+  (info [device]
+    (.getDeviceInfo device))
+  Info
+  (description [device]
+    (.getDescription (.getDeviceInfo device)))
+  (myname [device]
+    (.getName (.getDeviceInfo device)))
+  (vendor [device]
+    (.getVendor (.getDeviceInfo device)))
+  (version [device]
+    (.getVersion (.getDeviceInfo device)))
+  Open
+  (open [device]
+    (.open device))
+  (.isOpen [device]
+    (.isOpen device))
+  Timestamp
+  (ms-position [device]
+    (.getMicrosecondPosition device)))
+
+(defn ^long max-receivers [^MidiDevice device]
+  (.getMaxReceivers device))
+
+(defn ^long max-transmitters [^MidiDevice device]
+  (.getMaxTransmitters device))
+
+(defn receiver [^MidiDevice device]
+  (.getReceiver device))
+
+(defn receivers [^MidiDevice device]
+  (.getReceivers device))
+
+(defn transmitter [^MidiDevice device]
+  (.getTransmitter device))
+
+(defn transmitters [^MidiDevice device]
+  (.getTransmitters device))
+
+;; ============================= MidiChannel ================================
+
+
+
+;; =================== User friendly printing ==========================================
+
+(defmethod print-method MidiDevice$Info
+  [info ^java.io.Writer w]
+  (.write w (pr-str (bean info))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiDevice$Info;")
+  [info ^java.io.Writer w]
+  (.write w (pr-str (seq info))))
