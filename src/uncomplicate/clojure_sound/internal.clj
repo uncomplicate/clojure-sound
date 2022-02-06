@@ -4,6 +4,13 @@
 (defprotocol Support
   (supported [feature] [feature object]))
 
+(defprotocol SequenceSource
+  (set-sequence [source sequencer!]))
+
+(defprotocol Load
+  (load-instruments [source synth])
+  (unload-instruments [source synth]))
+
 (defn name-key [s]
   (-> (str/trim s)
       (str/replace " " "")

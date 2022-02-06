@@ -18,14 +18,26 @@
   (info [this]))
 
 (defprotocol Open
-  (open [this] [this buffer-size] [this format data offset buffer-size])
-  (open? [this]))
+  (open [this!] [this! buffer-size] [this! format data offset buffer-size])
+  (open? [this!]))
 
 (defprotocol Timestamp
-  (ms-position [this]))
+  (ms-length [this])
+  (ms-position [this])
+  (ms-position! [this microseconds]))
 
 (defprotocol Reset
-  (re-set! [this]))
+  (re-set! [this!]))
+
+(defprotocol Broadcast
+  (listen! [this! listener] [this! listener params])
+  (ignore! [this! listener]  [this! listener params]))
+
+(defprotocol Activity
+  (running? [this])
+  (recording? [this])
+  (start! [this])
+  (stop! [this]))
 
 (defn supported?
   ([feature]
@@ -36,4 +48,16 @@
 (defmulti write! (partial mapv class))
 
 (defmethod write! :default [& args]
-  (throw (ex-info (format "Unsupported write request.") {:type :sound-error :args args })))
+  (throw (ex-info (format "Unsupported write request.") {:type :sound-error :args args})))
+
+(defmethod print-method (Class/forName "[I")
+  [arr ^java.io.Writer w]
+  (.write w (pr-str (seq arr))))
+
+(defmethod print-method (Class/forName "[B")
+  [arr ^java.io.Writer w]
+  (.write w (pr-str (seq arr))))
+
+(defmethod print-method (Class/forName "[J")
+  [arr ^java.io.Writer w]
+  (.write w (pr-str (seq arr))))

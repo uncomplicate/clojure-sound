@@ -3,7 +3,7 @@
             [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support]]
-             [core :refer [write! Info InfoProvider Open Timestamp Reset]]])
+             [core :refer [write! Info InfoProvider Open Timestamp Reset Broadcast Activity]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
@@ -194,7 +194,14 @@
     (.isOpen line))
   InfoProvider
   (info [this]
-    (.getLineInfo this)))
+    (.getLineInfo this))
+  Broadcast
+  (listen! [line! listener]
+    (.addLineListener line! listener)
+    line!)
+  (ignore! [line! listener]
+    (.removeLineListener line! listener)
+    line!))
 
 (extend-type Line$Info
   Matches
@@ -227,11 +234,6 @@
 (defn line-class [info]
   (.getLineClass ^Line$Info (get port-info info info)))
 
-(defn add-listener! [^Line line! listener]
-  (.addLineListener line! listener))
-
-(defn remove-listener! [^Line line! listener]
-  (.removeLineListener line! listener))
 
 (defn line-event [line event-type ^long position]
   (LineEvent. line event-type position))
@@ -258,7 +260,16 @@
     (.available line))
   Timestamp
   (ms-position [line]
-    (.getMicrosecondPosition line)))
+    (.getMicrosecondPosition line))
+  Activity
+  (running? [line]
+    (.isRunning line))
+  (start! [line!]
+    (.start line!)
+    line!)
+  (stop! [line!]
+    (.stop line!)
+    line!))
 
 (defn formats [^DataLine$Info info]
   (.getFormats info))
@@ -286,17 +297,6 @@
 (defn active? [^DataLine line]
   (.isActive line))
 
-(defn running? [^DataLine line]
-  (.isRunning line))
-
-(defn start! [^DataLine line]
-  (.start line)
-  line)
-
-(defn stop! [^DataLine line]
-  (.stop line)
-  line)
-
 ;; ====================== Clip =================================================
 
 (extend-type Clip
@@ -309,7 +309,14 @@
     clip)
   Frame
   (frame-length [clip]
-    (.getFrameLength clip)))
+    (.getFrameLength clip))
+  Timestamp
+  (ms-length [clip]
+    (.getMicrosecondLength clip))
+  (ms-position [line]
+    (.getMicrosecondPosition line))
+  (ms-position! [clip microseconds]
+    (.setMicrosecondPosition clip microseconds)))
 
 (defn clip
   ([]
@@ -317,15 +324,8 @@
   ([^Mixer$Info mixer-info]
    (AudioSystem/getClip mixer-info)))
 
-(defn microsecond-length ^long [^Clip clip]
-  (.getMicrosecondLength clip))
-
 (defn frame-position! [^Clip clip ^long frames]
   (.setFramePosition clip frames)
-  clip)
-
-(defn microsecond-position! [^Clip clip ^long microseconds]
-  (.setMicrosecondPosition clip microseconds)
   clip)
 
 (defn loop-points! [^Clip clip ^long start ^long end]
