@@ -5,10 +5,12 @@
             [uncomplicate.commons.core :refer [Releaseable]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
-           [javax.sound.sampled AudioSystem AudioFormat AudioInputStream Mixer Mixer$Info Line
-            Line$Info DataLine DataLine$Info LineListener Port Port$Info SourceDataLine TargetDataLine Clip DataLine$Info
-            Control$Type AudioPermission AudioFormat AudioFormat$Encoding
-            AudioFileFormat AudioFileFormat$Type]))
+           [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
+            AudioFormat AudioFormat$Encoding AudioFileFormat AudioFileFormat$Type Mixer Mixer$Info
+            Line Line$Info DataLine DataLine$Info Port Port$Info SourceDataLine TargetDataLine Clip
+            Control$Type Control BooleanControl BooleanControl$Type CompoundControl EnumControl
+            EnumControl$Type FloatControl FloatControl$Type LineListener LineEvent LineEvent$Type
+            ReverbType]))
 
 (defprotocol Open
   (open [line] [line buffer-size] [line format data offset buffer-size]))
@@ -26,7 +28,24 @@
   (afile-format [this])
   (audio-input-stream [this] [target-format source-stream])
   (target-encodings [this] [target-format source-stream])
-  (conversion-supported? [target source]))
+  (convertible? [target source]))
+
+(defprotocol Available
+  (available [this]))
+
+(defprotocol Frame
+  (frame-length [this])
+  (frame-position [this]))
+
+(defprotocol Value
+  (value [this])
+  (value! [this val]))
+
+(defprotocol GetType
+  (get-type [this]))
+
+(defprotocol Name
+  (get-name [this]))
 
 (defn name-key [s]
   (-> (str/trim s)
@@ -36,6 +55,9 @@
       keyword))
 
 ;; ===================== Keyword coding ================================================
+
+(def global-const
+  {:not-specified AudioSystem/NOT_SPECIFIED})
 
 (def port-info
   {:microphone Port$Info/MICROPHONE
@@ -102,10 +124,27 @@
    :snd AudioFileFormat$Type/SND
    :wave AudioFileFormat$Type/WAVE})
 
-(extend-type Control$Type
-  Support
-  (supported [this line]
-    (.isControlSupported ^Line line this)))
+(def control-type
+  {:apply-reverb BooleanControl$Type/APPLY_REVERB
+   :reverb EnumControl$Type/REVERB
+   :mute BooleanControl$Type/MUTE
+   :aux-return FloatControl$Type/AUX_RETURN
+   :aux-send FloatControl$Type/AUX_SEND
+   :balance FloatControl$Type/BALANCE
+   :master-gain FloatControl$Type/MASTER_GAIN
+   :pan FloatControl$Type/PAN
+   :reverb-return FloatControl$Type/REVERB_RETURN
+   :reverb-send FloatControl$Type/REVERB_SEND
+   :sample-rate FloatControl$Type/SAMPLE_RATE
+   :volume FloatControl$Type/VOLUME
+   :vol FloatControl$Type/VOLUME})
+
+
+(def line-event-type
+  {:close LineEvent$Type/CLOSE
+   :open LineEvent$Type/OPEN
+   :start LineEvent$Type/START
+   :stop LineEvent$Type/STOP})
 
 ;; =========================== AudioSystem ====================================
 
@@ -130,14 +169,14 @@
     (AudioSystem/getAudioInputStream target ^AudioInputStream source))
   (target-encodings [source]
     (AudioSystem/getTargetEncodings source))
-  (conversion-supported? [target source]
+  (convertible? [target source]
     (AudioSystem/isConversionSupported target ^AudioFormat source))
   AudioFormat$Encoding
   (audio-input-stream [target source]
     (AudioSystem/getAudioInputStream target ^AudioInputStream source))
   (target-encodings [source]
     (AudioSystem/getTargetEncodings source))
-  (conversion-supported? [target source]
+  (convertible? [target source]
     (AudioSystem/isConversionSupported target ^AudioFormat source)))
 
 (defn audio-file-types [^AudioInputStream stream]
@@ -181,12 +220,6 @@
   (supported [info]
     (AudioSystem/isLineSupported (get port-info info info))))
 
-(defn add-listener! [^Line line! listener]
-  (.addLineListener line! listener))
-
-(defn remove-listener! [^Line line! listener]
-  (.removeLineListener line! listener))
-
 (defn control
   ([^Line line]
    (.getControls line))
@@ -213,7 +246,35 @@
 (defn line-class [info]
   (.getLineClass ^Line$Info (get port-info info info)))
 
+(defn add-listener! [^Line line! listener]
+  (.addLineListener line! listener))
+
+(defn remove-listener! [^Line line! listener]
+  (.removeLineListener line! listener))
+
+(defn line-event [line event-type ^long position]
+  (LineEvent. line event-type position))
+
+(extend-type LineEvent
+  Frame
+  (frame-position [event]
+    (.getFramePosition event))
+  GetType
+  (get-type [control]
+    (.getType control)))
+
 ;; =================== DataLine ==========================================
+
+(extend-type DataLine
+  Format
+  (get-format [line]
+    (.getFormat line))
+  Frame
+  (frame-position [line]
+    (.getLongFramePosition line))
+  Available
+  (available [line]
+    (.available line)))
 
 (defn formats [^DataLine$Info info]
   (.getFormats info))
@@ -223,9 +284,6 @@
 
 (defn min-buffer-size ^long [^DataLine$Info info]
   (.getMinBufferSize info))
-
-(defn available ^long [^DataLine line]
-  (.available line))
 
 (defn drain! [^DataLine line]
   (.drain line)
@@ -237,9 +295,6 @@
 
 (defn buffer-size ^long [^DataLine line]
   (.getBufferSize line))
-
-(defn frame-position ^long [^DataLine line]
-  (.getLongFramePosition line))
 
 (defn microsecond-position ^long [^DataLine line]
   (.getMicrosecondPosition line))
@@ -270,16 +325,16 @@
     clip)
   (open [clip format data offset buffer-size]
     (.open clip ^AudioFormat format data offset buffer-size)
-    clip))
+    clip)
+  FrameLength
+  (frame-length [clip]
+    (.getFrameLength clip)))
 
 (defn clip
   ([]
    (AudioSystem/getClip))
   ([^Mixer$Info mixer-info]
    (AudioSystem/getClip mixer-info)))
-
-(defn frame-length ^long [^Clip clip]
-  (.getFrameLength clip))
 
 (defn microsecond-length ^long [^Clip clip]
   (.getMicrosecondLength clip))
@@ -305,11 +360,6 @@
    clip))
 
 ;; ====================== SourceDataLine =================================================
-
-(extend-type DataLine
-  Format
-  (get-format [this]
-    (.getFormat this)))
 
 (extend-type SourceDataLine
   Open
@@ -339,13 +389,12 @@
     (.open line ^AudioFormat format buffer-size)
     line))
 
-(defn read! ^long [^TargetDataLine line  ^bytes array! ^long offset, ^long length]
-  (.read line array! offset length))
-
 ;; =========================== Port ============================================
 
-(defn port-name [^Port$Info port]
-  (.getName port))
+(extend-type Port$Info
+  Name
+  (get-name [info]
+    (.getName info)))
 
 (defn source? [^Port$Info port]
   (.isSource port))
@@ -357,12 +406,16 @@
   (supported [this info]
     (.isLineSupported this (get port-info info info))))
 
+(extend-type Mixer$Info
+  Name
+  (get-name [info]
+    (.getName info)))
+
 (defn mixer-info
   ([]
    (AudioSystem/getMixerInfo))
   ([^Mixer mixer]
    (.getMixerInfo mixer)))
-
 
 (defn mixer
   ([]
@@ -374,8 +427,10 @@
   (.getMaxLines mixer (get port-info info info)))
 
 (defn line
-  ([info]
-   (AudioSystem/getLine (get port-info info info)))
+  ([obj]
+   (if (instance? LineEvent obj)
+     (.getLine ^LineEvent obj)
+     (AudioSystem/getLine (get port-info obj obj))))
   ([^Mixer mixer info]
    (.getLine mixer (get port-info info info))))
 
@@ -424,6 +479,18 @@
 
 (defn unsync! [^Mixer mixer! lines]
   (.unsynchronize mixer! (if (sequential? lines) (into-array Line lines) lines)))
+
+(defn description [^Mixer$Info info]
+  (.getDescription info))
+
+(defn description [^Mixer$Info info]
+  (.getDescription info))
+
+(defn vendor [^Mixer$Info mixer]
+  (.getVendor mixer))
+
+(defn version [^Mixer$Info mixer]
+  (.getVersion mixer))
 
 ;; ====================== AudioPermission ======================================
 
@@ -548,9 +615,152 @@
 (defn property [^AudioFileFormat aff key]
   (.getProperty aff (name key)))
 
+;; ========================== InputStream ================================================
+
+(extend-type InputStream
+  Available
+  (available [stream]
+    (.available stream))
+  Support
+  (supported [stream]
+    (.markSupported stream)))
+
+(defn mark! [^InputStream stream! ^long read-limit]
+  (.mark stream! read-limit))
+
+(defn read!
+  (^long [^InputStream stream]
+   (.read stream))
+  (^long [^InputStream stream ^bytes array!]
+   (.read stream array!))
+  (^long [^InputStream stream ^bytes array! ^long offset, ^long length]
+   (.read stream array! offset length)))
+
+(defn reset! [^InputStream stream!]
+  (.reset stream!)
+  stream!)
+
+(defn skip! [^InputStream stream! long n]
+  (.skip stream! n))
+
 ;; =================== AudioInputStream ================================================
 
+(extend-type AudioInputStream
+  Releaseable
+  (release [this]
+    (.close this)
+    true)
+  Format
+  (get-format [this]
+    (.getFormat this))
+  FrameLength
+  (frame-length [clip]
+    (.getFrameLength clip)))
 
+(defn audio-input
+  ([stream format ^long length]
+   (AudioInputStream. stream format length))
+  ([line]
+   (AudioInputStream. line)))
+
+;; =================== Control ==================================================
+
+(extend-type Control$Type
+  Support
+  (supported [this line]
+    (.isControlSupported ^Line line this)))
+
+(extend-type Control
+  GetType
+  (get-type [control]
+    (.getType control)))
+
+;; =================== BooleanControl ==================================================
+
+(extend-type BooleanControl
+  Value
+  (value [bc]
+    (.getValue bc))
+  (value! [bc! val]
+    (.setValue bc! val)))
+
+(defn state-label [^BooleanControl control state]
+  (.getStateLabel control state))
+
+;; =================== CompoundControl ==================================================
+
+(defn controls [^CompoundControl control]
+  (.getMemberControls control))
+
+;; =================== EnumControl ==================================================
+
+(extend-type EnumControl
+  Value
+  (value [control]
+    (.getValue control))
+  (value! [control! val]
+    (.setValue control! val)))
+
+(defn values [^EnumControl control]
+  (.getValues control))
+
+;; =================== FloatControl ==================================================
+
+(extend-type FloatControl
+  Value
+  (value [control]
+    (.getValue control))
+  (value! [control! val]
+    (.setValue control! val)))
+
+(defn maximum ^double [^FloatControl control]
+  (.getMaximum control))
+
+(defn max-label [^FloatControl control]
+  (.getMaxLabel control))
+
+(defn mid-label [^FloatControl control]
+  (.getMidLabel control))
+
+(defn minimum ^double [^FloatControl control]
+  (.getMaximum control))
+
+(defn min-label [^FloatControl control]
+  (.getMinLabel control))
+
+(defn precision ^double [^FloatControl control]
+  (.getPrecision control))
+
+(defn units [^FloatControl control]
+  (.getUnits control))
+
+(defn update-period ^long [^FloatControl control]
+  (.getUpdatePeriod control))
+
+(defn shift! [^FloatControl control ^double from ^double to ^long microseconds]
+  (.shift control from to microseconds))
+
+;; =================== ReverbType  =====================================================
+
+(extend-type ReverbType
+  Name
+  (get-name [reverb]
+    (.getName reverb)))
+
+(defn decay-time ^long [^ReverbType reverb]
+  (.getDecayTime reverb))
+
+(defn early-delay ^long [^ReverbType reverb]
+  (.getEarlyReflectionDelay reverb))
+
+(defn early-intensity ^double [^ReverbType reverb]
+  (.getEarlyReflectionIntensity reverb))
+
+(defn late-delay ^long [^ReverbType reverb]
+  (.getLateReflectionDelay reverb))
+
+(defn late-intensity ^double [^ReverbType reverb]
+  (.getLateReflectionIntensity reverb))
 
 ;; =================== User friendly printing ==========================================
 
@@ -562,6 +772,11 @@
 (defmethod print-method Mixer$Info
   [info ^java.io.Writer w]
   (.write w (pr-str (bean info))))
+
+(defmethod print-method (Class/forName "[Ljava.lang.Object;")
+  [objects ^java.io.Writer w]
+  (.write w (pr-str (seq objects))))
+
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer$Info;")
   [info ^java.io.Writer w]
@@ -588,17 +803,41 @@
   (.write w (pr-str (seq mixers))))
 
 (defmethod print-method AudioFormat
-  [this ^java.io.Writer w]
-  (.write w (pr-str (bean this))))
+  [af ^java.io.Writer w]
+  (.write w (pr-str (bean af))))
 
 (defmethod print-method AudioFileFormat
-  [this ^java.io.Writer w]
-  (.write w (pr-str (bean this))))
+  [aff ^java.io.Writer w]
+  (.write w (pr-str (bean aff))))
 
 (defmethod print-method AudioFormat$Encoding
-  [info ^java.io.Writer w]
-  (.write w (pr-str (name-key info))))
+  [enc ^java.io.Writer w]
+  (.write w (pr-str (name-key enc))))
 
 (defmethod print-method AudioFileFormat$Type
-  [info ^java.io.Writer w]
-  (.write w (pr-str (name-key info))))
+  [type ^java.io.Writer w]
+  (.write w (pr-str (name-key type))))
+
+(defmethod print-method AudioInputStream
+  [stream ^java.io.Writer w]
+  (.write w (pr-str (bean stream))))
+
+(defmethod print-method Control
+  [control ^java.io.Writer w]
+  (.write w (pr-str (bean control))))
+
+(defmethod print-method Control$Type
+  [type ^java.io.Writer w]
+  (.write w (pr-str (name-key type))))
+
+(defmethod print-method LineEvent
+  [event ^java.io.Writer w]
+  (.write w (pr-str (bean event))))
+
+(defmethod print-method LineEvent$Type
+  [type ^java.io.Writer w]
+  (.write w (pr-str (name-key type))))
+
+(defmethod print-method ReverbType
+  [type ^java.io.Writer w]
+  (.write w (pr-str (bean type))))
