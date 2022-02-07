@@ -2,9 +2,9 @@
   (:refer-clojure :exclude [sequence])
   (:require [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
-             [internal :refer [name-key Support SequenceSource set-sequence Load
-                               load-instruments unload-instruments]]
-             [core :refer [write! Info InfoProvider Open Timestamp Reset Broadcast Activity Type
+             [internal :refer [name-key Support SequenceSource set-sequence get-sequence
+                               Load load-instruments unload-instruments]]
+             [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
                            Format]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
@@ -32,39 +32,64 @@
    :midi-time Sequencer$SyncMode/MIDI_TIME_CODE
    :no-sync Sequencer$SyncMode/NO_SYNC})
 
+(def timing-type
+  {:ppq Sequence/PPQ
+   :smpte24 Sequence/SMPTE_24
+   :smpte-24 Sequence/SMPTE_24
+   :smpte25 Sequence/SMPTE_25
+   :smpte-25 Sequence/SMPTE_25
+   :smpte30 Sequence/SMPTE_30
+   :smpte-30 Sequence/SMPTE_30
+   :smpte30drop Sequence/SMPTE_30DROP
+   :smpte-30drop Sequence/SMPTE_30DROP
+   :smpte-30-drop Sequence/SMPTE_30DROP
+   :smpte2997 Sequence/SMPTE_30DROP
+   :smpte-2997 Sequence/SMPTE_30DROP})
+
+(def timing-type-key
+  {Sequence/PPQ :ppq
+   Sequence/SMPTE_24 :smpte24
+   Sequence/SMPTE_25 :smpte25
+   Sequence/SMPTE_30 :smpte30
+   Sequence/SMPTE_30DROP :smpte30drop})
+
 ;; =========================== MidiSystem ====================================
 
 (defprotocol MidiSystemProcedures
   (file-format [this])
-  (sequence [this])
   (soundbank [this])
   (device [this]))
+
+(extend-protocol SequenceSource
+  File
+  (get-sequence [file]
+    (MidiSystem/getSequence file))
+  InputStream
+  (get-sequence [stream]
+    (MidiSystem/getSequence stream))
+  URL
+  (get-sequence [url]
+    (MidiSystem/getSequence url))
+  Sequencer
+  (get-sequence [sequencer]
+    (.getSequence sequencer)))
 
 (extend-protocol MidiSystemProcedures
   File
   (file-format [file]
     (MidiSystem/getMidiFileFormat file))
-  (sequence [file]
-    (MidiSystem/getSequence file))
   (soundbank [file]
     (MidiSystem/getSoundbank file))
   InputStream
   (file-format [stream]
     (MidiSystem/getMidiFileFormat stream))
-  (sequence [stream]
-    (MidiSystem/getSequence stream))
   (soundbank [stream]
     (MidiSystem/getSoundbank stream))
   URL
   (file-format [url]
     (MidiSystem/getMidiFileFormat url))
-  (sequence [url]
-    (MidiSystem/getSequence url))
   (soundbank [url]
     (MidiSystem/getSoundbank url))
-  Sequencer
-  (sequence [sequencer]
-    (.getSequence sequencer))
   MidiDeviceReceiver
   (device [receiver]
     (.getMidiDevice receiver))
@@ -158,7 +183,7 @@
     (.open device))
   (.isOpen [device]
     (.isOpen device))
-  Timestamp
+  Timing
   (ms-position [device]
     (.getMicrosecondPosition device)))
 
@@ -372,7 +397,7 @@
     sequencer!)
   (ignore! [sequencer! listener controllers]
     (.removeControllerEventListener sequencer! listener controllers))
-  Timestamp
+  Timing
   (ms-length [sequencer]
     (.getMicrosecondLength sequencer))
   (ms-position [sequencer]
@@ -542,9 +567,13 @@
 ;; =================== MidiFileFormat ==================================================
 
 (extend-type MidiFileFormat
-  Timestamp
+  Timing
   (ms-length [mff]
     (.getMicrosecondLength mff))
+  (division-type [mff]
+    (.getDivisionType mff))
+  (resolution [mff]
+    (.getResolution mff))
   Format
   (property [mff key]
     (.getProperty mff (name key)))
@@ -558,15 +587,11 @@
 
 (defn midi-file-format
   ([type division-type resolution bytes microseconds]
-   (MidiFileFormat. type division-type resolution bytes microseconds))
+   (MidiFileFormat. type (get timing-type division-type division-type)
+                    resolution bytes microseconds))
   ([type division-type resolution bytes microseconds properties]
-   (MidiFileFormat. type division-type resolution bytes microseconds properties)))
-
-(defn division-type [^MidiFileFormat mff]
-  (.getDivisionType mff))
-
-(defn resolution [^MidiFileFormat mff]
-  (.getResolution mff))
+   (MidiFileFormat. type (get timing-type division-type division-type)
+                    resolution bytes microseconds properties)))
 
 ;; =================== MetaMessage =====================================================
 
@@ -618,6 +643,40 @@
   ([bank program]
    (Patch. bank program)))
 
+;; =================== Sequence ========================================================
+
+(extend-type Sequence
+  Timing
+  (ms-length [mff]
+    (.getMicrosecondLength mff))
+  (division-type [s]
+    (.getDivisionType s))
+  (resolution [s]
+    (.getResolution s)))
+
+(defn sequence
+  ([source]
+   (get-sequence source))
+  ([division-type ^long resolution]
+   (Sequence. (get timing-type division-type division-type) resolution))
+  ([division-type ^long resolution ^long num-tracks]
+   (Sequence. (get timing-type division-type division-type) resolution num-tracks)))
+
+(defn track [^Sequence sequence]
+  (.createTrack sequence))
+
+(defn tracks [^Sequence sequence]
+  (.getTracks sequence))
+
+(defn delete! [^Sequence sequence! track]
+  (.deleteTrack sequence! track))
+
+(defn patches [^Sequence sequence]
+  (.getPatchList sequence))
+
+(defn tick-length ^long [^Sequence sequence]
+  (.getTickLength sequence))
+
 ;; =================== User friendly printing ==========================================
 
 (defmethod print-method MidiDevice$Info
@@ -656,6 +715,10 @@
   [patches ^java.io.Writer w]
   (.write w (pr-str (seq patches))))
 
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.Track;")
+  [tracks ^java.io.Writer w]
+  (.write w (pr-str (seq tracks))))
+
 (defmethod print-method MidiMessage
   [message ^java.io.Writer w]
   (.write w (pr-str (dissoc (bean message) :class))))
@@ -663,3 +726,11 @@
 (defmethod print-method MetaMessage
   [message ^java.io.Writer w]
   (.write w (pr-str (dissoc (bean message) :class))))
+
+(defmethod print-method Patch
+  [message ^java.io.Writer w]
+  (.write w (pr-str (bean message))))
+
+(defmethod print-method Sequence
+  [message ^java.io.Writer w]
+  (.write w (pr-str (bean message))))

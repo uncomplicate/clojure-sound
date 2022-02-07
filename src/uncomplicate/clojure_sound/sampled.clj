@@ -3,7 +3,7 @@
             [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support]]
-             [core :refer [write! Info InfoProvider Open Timestamp Reset Broadcast Activity Type
+             [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
                            Format]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
@@ -253,7 +253,7 @@
   Available
   (available [line]
     (.available line))
-  Timestamp
+  Timing
   (ms-position [line]
     (.getMicrosecondPosition line))
   Activity
@@ -305,7 +305,7 @@
   Frame
   (frame-length [clip]
     (.getFrameLength clip))
-  Timestamp
+  Timing
   (ms-length [clip]
     (.getMicrosecondLength clip))
   (ms-position [line]

@@ -21,7 +21,9 @@
   (open [this!] [this! buffer-size] [this! format data offset buffer-size])
   (open? [this!]))
 
-(defprotocol Timestamp
+(defprotocol Timing
+  (resolution [this])
+  (division-type [this])
   (ms-length [this])
   (ms-position [this])
   (ms-position! [this microseconds]))

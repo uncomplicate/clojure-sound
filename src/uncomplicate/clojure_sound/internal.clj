@@ -5,7 +5,8 @@
   (supported [feature] [feature object]))
 
 (defprotocol SequenceSource
-  (set-sequence [source sequencer!]))
+  (set-sequence [source sequencer!])
+  (get-sequence [source]))
 
 (defprotocol Load
   (load-instruments [source synth])
