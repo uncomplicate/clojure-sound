@@ -16,6 +16,9 @@
 (defprotocol Instruments
   (instruments [this]))
 
+(defprotocol Program
+  (program [this]))
+
 ;; ===================== Keyword coding ================================================
 
 (def sync-mode
@@ -182,7 +185,10 @@
   Reset
   (re-set! [channel!]
     (.resetAllControllers channel!)
-    channel!))
+    channel!)
+  Program
+  (program [channel]
+    (.getProgram channel)))
 
 (defn off!
   ([^MidiChannel channel!]
@@ -261,9 +267,6 @@
 (defn bend! [^MidiChannel channel! bend]
   (.setPitchBend channel! bend)
   channel!)
-
-(defn program ^long [^MidiChannel channel]
-  (.getProgram channel))
 
 (defn solo
   ([^MidiChannel channel]
@@ -535,8 +538,9 @@
     (.unloadInstrument ^Synthesizer synth! instrument)
     synth!))
 
-(defn patch [^Instrument instrument]
-  (.getPatch instrument))
+;; =================== MidiFileFormat ==================================================
+
+
 
 ;; =================== MetaMessage =====================================================
 
@@ -559,6 +563,34 @@
 (defn set! [^MetaMessage message! type data length]
   (.setMessage message! type data length)
   message!)
+
+;; =================== MidiEvent =======================================================
+
+(defn midi-event [message tick]
+  (MidiEvent. message tick))
+
+(defn message [^MidiEvent event]
+  (.getMessage event))
+
+(defn tick [^MidiEvent event]
+  (.getTick event))
+
+(defn tick! [^MidiEvent event! tick]
+  (.setTick event! tick)
+  event!)
+
+;; =================== Patch ===========================================================
+
+(extend-type Patch
+  Program
+  (program [patch]
+    (.getProgram patch)))
+
+(defn patch
+  ([^Instrument instrument]
+   (.getPatch instrument))
+  ([bank program]
+   (Patch. bank program)))
 
 ;; =================== User friendly printing ==========================================
 
