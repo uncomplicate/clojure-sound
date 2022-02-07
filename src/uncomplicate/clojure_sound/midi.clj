@@ -20,31 +20,25 @@
 (defprotocol Program
   (program [this]))
 
+(defprotocol Data
+  (data [this])
+  (message! [message status] [message arg1 arg2 arg3] [message command channel data1 data2]))
+
 ;; ===================== Keyword coding ================================================
 
 (def sync-mode
   {:internal-clock Sequencer$SyncMode/INTERNAL_CLOCK
    :internal Sequencer$SyncMode/INTERNAL_CLOCK
-   :midi-sync Sequencer$SyncMode/MIDI_SYNC
    :sync Sequencer$SyncMode/MIDI_SYNC
-   :midi-time-code Sequencer$SyncMode/MIDI_TIME_CODE
    :time Sequencer$SyncMode/MIDI_TIME_CODE
-   :midi-time Sequencer$SyncMode/MIDI_TIME_CODE
    :no-sync Sequencer$SyncMode/NO_SYNC})
 
 (def timing-type
   {:ppq Sequence/PPQ
    :smpte24 Sequence/SMPTE_24
-   :smpte-24 Sequence/SMPTE_24
    :smpte25 Sequence/SMPTE_25
-   :smpte-25 Sequence/SMPTE_25
    :smpte30 Sequence/SMPTE_30
-   :smpte-30 Sequence/SMPTE_30
-   :smpte30drop Sequence/SMPTE_30DROP
-   :smpte-30drop Sequence/SMPTE_30DROP
-   :smpte-30-drop Sequence/SMPTE_30DROP
-   :smpte2997 Sequence/SMPTE_30DROP
-   :smpte-2997 Sequence/SMPTE_30DROP})
+   :smpte30drop Sequence/SMPTE_30DROP})
 
 (def timing-type-key
   {Sequence/PPQ :ppq
@@ -52,6 +46,52 @@
    Sequence/SMPTE_25 :smpte25
    Sequence/SMPTE_30 :smpte30
    Sequence/SMPTE_30DROP :smpte30drop})
+
+(def message-status
+  {:active-sensing ShortMessage/ACTIVE_SENSING
+   :channel-pressure ShortMessage/CHANNEL_PRESSURE
+   :continue ShortMessage/CONTINUE
+   :control-change ShortMessage/CONTROL_CHANGE
+   :exclusive-end ShortMessage/END_OF_EXCLUSIVE
+   :time ShortMessage/MIDI_TIME_CODE
+   :off ShortMessage/NOTE_OFF
+   :on ShortMessage/NOTE_ON
+   :bend ShortMessage/PITCH_BEND
+   :poly-pressure ShortMessage/POLY_PRESSURE
+   :program-change ShortMessage/PROGRAM_CHANGE
+   :position ShortMessage/SONG_POSITION_POINTER
+   :select ShortMessage/SONG_SELECT
+   :start ShortMessage/START
+   :stop ShortMessage/STOP
+   :reset ShortMessage/SYSTEM_RESET
+   :clock ShortMessage/TIMING_CLOCK
+   :tune ShortMessage/TUNE_REQUEST
+   :special-system-exclusive SysexMessage/SPECIAL_SYSTEM_EXCLUSIVE
+   :system-exclusive SysexMessage/SYSTEM_EXCLUSIVE})
+
+(def message-status-key
+  {ShortMessage/ACTIVE_SENSING :active-sensing
+   ShortMessage/CHANNEL_PRESSURE :channel-pressure
+   ShortMessage/CONTINUE :continue
+   ShortMessage/CONTROL_CHANGE :control-change
+   ShortMessage/END_OF_EXCLUSIVE :exclusive-end
+   ShortMessage/MIDI_TIME_CODE :time
+   ShortMessage/NOTE_OFF :off
+   ShortMessage/NOTE_ON :on
+   ShortMessage/PITCH_BEND :bend
+   ShortMessage/POLY_PRESSURE :poly-pressure
+   ShortMessage/PROGRAM_CHANGE :program-change
+   ShortMessage/SONG_POSITION_POINTER :position
+   ShortMessage/SONG_SELECT :select
+   ShortMessage/START :start
+   ShortMessage/STOP :stop
+   ShortMessage/SYSTEM_RESET :reset
+   ShortMessage/TIMING_CLOCK :clock
+   ShortMessage/TUNE_REQUEST :tune})
+
+(def sysex-status-key
+  {SysexMessage/SPECIAL_SYSTEM_EXCLUSIVE :special-system-exclusive
+   SysexMessage/SYSTEM_EXCLUSIVE :system-exclusive})
 
 ;; =========================== MidiSystem ====================================
 
@@ -593,12 +633,30 @@
    (MidiFileFormat. type (get timing-type division-type division-type)
                     resolution bytes microseconds properties)))
 
+;; =================== MidiMessage =====================================================
+
+(defn message-bytes [^MidiMessage message]
+  (.getMessage message))
+
+(defn message-length ^long [^MidiMessage message]
+  (.getLength message))
+
+(defn status [^MidiMessage message]
+  (let [s (.getStatus message)]
+    (get message-status-key s s)))
+
 ;; =================== MetaMessage =====================================================
 
 (extend-type MetaMessage
   Type
   (mytype [message]
-    (.getType message)))
+    (.getType message))
+  Data
+  (data [message]
+    (.getData message))
+  (message!! [mm! type data length]
+    (.setMessage mm! type data length)
+    mm!))
 
 (defn meta-message
   ([]
@@ -607,13 +665,6 @@
    (MetaMessage. type data (alength data)))
   ([type data length]
    (MetaMessage. type data length)))
-
-(defn data [^MetaMessage message]
-  (.getData message))
-
-(defn set! [^MetaMessage message! type data length]
-  (.setMessage message! type data length)
-  message!)
 
 ;; =================== MidiEvent =======================================================
 
@@ -677,6 +728,66 @@
 (defn tick-length ^long [^Sequence sequence]
   (.getTickLength sequence))
 
+;; =================== ShortMessage =====================================================
+
+(extend-type ShortMessage
+  Data
+  (message! [sm! status]
+    (.setMessage sm! (get message-status status status))
+    sm!)
+  (message! [sm! status data1 data2]
+    (.setMessage sm! (get message-status status status) data1 data2)
+    sm!)
+  (message! [sm! command channel data1 data2]
+    (.setMessage sm! command channel data1 data2)
+    sm!))
+
+(defn short-message
+  ([])
+  ([status]
+   (ShortMessage. (get message-status status status)))
+  ([status data1 data2]
+   (ShortMessage. (get message-status status status) data1 data2))
+  ([command channel data1 data2]
+   (ShortMessage. command channel data1 data2)))
+
+(defn channel [^ShortMessage message]
+  (.getChannel message))
+
+(defn command [^ShortMessage message]
+  (.getCommand message))
+
+(defn data1 ^long [^ShortMessage message]
+  (.getData1 message))
+
+(defn data2 ^long [^ShortMessage message]
+  (.getData2 message))
+
+;; =================== SysexMessage =====================================================
+
+(extend-type SysexMessage
+  Data
+  (data [message]
+    (.getData message))
+  (message! [sm! data length]
+    (.setMessage sm! data length)
+    sm!)
+  (message! [sm! status data length]
+    (.setMessage sm! (get message-status status status) data length)
+    sm!))
+
+(defn sysex-message
+  ([]
+   (SysexMessage.))
+  ([data length]
+   (SysexMessage. data length))
+  ([status data length]
+   (SysexMessage. (get message-status status status) data length)))
+
+;; =================== SoundbankResource ==========================================
+
+
+
 ;; =================== User friendly printing ==========================================
 
 (defmethod print-method MidiDevice$Info
@@ -718,6 +829,10 @@
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Track;")
   [tracks ^java.io.Writer w]
   (.write w (pr-str (seq tracks))))
+
+(defmethod print-method MidiEvent
+  [event ^java.io.Writer w]
+  (.write w (pr-str (dissoc (bean event) :class))))
 
 (defmethod print-method MidiMessage
   [message ^java.io.Writer w]
