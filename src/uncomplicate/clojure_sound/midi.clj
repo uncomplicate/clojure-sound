@@ -3,7 +3,7 @@
   (:require [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support SequenceSource set-sequence get-sequence
-                               Load load-instruments unload-instruments]]
+                               Load load-instruments unload-instruments simple-name]]
              [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
                            Format]]])
   (:import java.net.URL
@@ -141,7 +141,10 @@
     (MidiSystem/getMidiDevice info))
   Synthesizer
   (soundbank [synth]
-    (.getDefaultSoundbank synth)))
+    (.getDefaultSoundbank synth))
+  SoundbankResource
+  (soundbank [resource]
+    (.getSoundbank resource)))
 
 (defn device-info []
   (MidiSystem/getMidiDeviceInfo))
@@ -594,6 +597,19 @@
 (defn remap! [^Synthesizer synth! from to]
   (.remapInstrument synth! from to))
 
+;; =================== SoundbankResource ==========================================
+
+(extend-type SoundbankResource
+  Info
+  (myname [this]
+    (.getName this))
+  Data
+  (data [resource]
+    (.getData resource)))
+
+(defn data-class [^SoundbankResource resource]
+  (.getDataClass resource))
+
 ;; =================== Instrument ======================================================
 
 (extend-type Instrument
@@ -743,7 +759,8 @@
     sm!))
 
 (defn short-message
-  ([])
+  ([]
+   (ShortMessage.))
   ([status]
    (ShortMessage. (get message-status status status)))
   ([status data1 data2]
@@ -784,19 +801,17 @@
   ([status data length]
    (SysexMessage. (get message-status status status) data length)))
 
-;; =================== SoundbankResource ==========================================
-
-
+;; =================== Track ==========================================
 
 ;; =================== User friendly printing ==========================================
 
 (defmethod print-method MidiDevice$Info
   [info ^java.io.Writer w]
-  (.write w (pr-str (bean info))))
+  (.write w (pr-str (update (bean info) :class simple-name))))
 
 (defmethod print-method Soundbank
   [soundbank ^java.io.Writer w]
-  (.write w (pr-str (bean soundbank))))
+  (.write w (pr-str (update (bean soundbank) :class simple-name))))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiDevice$Info;")
   [info ^java.io.Writer w]
@@ -830,22 +845,24 @@
   [tracks ^java.io.Writer w]
   (.write w (pr-str (seq tracks))))
 
+(defmethod print-method SoundbankResource
+  [resource ^java.io.Writer w]
+  (.write w (pr-str (update (bean resource) :class simple-name))))
+
 (defmethod print-method MidiEvent
   [event ^java.io.Writer w]
-  (.write w (pr-str (dissoc (bean event) :class))))
+  (.write w (pr-str (update (bean event) :class simple-name))))
 
 (defmethod print-method MidiMessage
   [message ^java.io.Writer w]
-  (.write w (pr-str (dissoc (bean message) :class))))
-
-(defmethod print-method MetaMessage
-  [message ^java.io.Writer w]
-  (.write w (pr-str (dissoc (bean message) :class))))
+  (.write w (pr-str (-> (bean message)
+                        (update :class simple-name)
+                        (update :status message-status-key)))))
 
 (defmethod print-method Patch
   [message ^java.io.Writer w]
-  (.write w (pr-str (bean message))))
+  (.write w (pr-str (update (bean patch) :class simple-name))))
 
 (defmethod print-method Sequence
-  [message ^java.io.Writer w]
-  (.write w (pr-str (bean message))))
+  [s ^java.io.Writer w]
+  (.write w (pr-str (update (bean s) :class simple-name))))
