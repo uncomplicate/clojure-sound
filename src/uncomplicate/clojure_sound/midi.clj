@@ -4,7 +4,8 @@
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support SequenceSource set-sequence Load
                                load-instruments unload-instruments]]
-             [core :refer [write! Info InfoProvider Open Timestamp Reset Broadcast Activity Type]]])
+             [core :refer [write! Info InfoProvider Open Timestamp Reset Broadcast Activity Type
+                           Format]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.midi MidiSystem MidiDevice MidiDevice$Info MidiFileFormat MidiChannel
@@ -540,7 +541,32 @@
 
 ;; =================== MidiFileFormat ==================================================
 
+(extend-type MidiFileFormat
+  Timestamp
+  (ms-length [mff]
+    (.getMicrosecondLength mff))
+  Format
+  (property [mff key]
+    (.getProperty mff (name key)))
+  (properties [mf]
+    (.properties mf))
+  (byte-length [mff]
+    (.getByteLength mff))
+  Type
+  (mytype [mff]
+    (.getType mff)))
 
+(defn midi-file-format
+  ([type division-type resolution bytes microseconds]
+   (MidiFileFormat. type division-type resolution bytes microseconds))
+  ([type division-type resolution bytes microseconds properties]
+   (MidiFileFormat. type division-type resolution bytes microseconds properties)))
+
+(defn division-type [^MidiFileFormat mff]
+  (.getDivisionType mff))
+
+(defn resolution [^MidiFileFormat mff]
+  (.getResolution mff))
 
 ;; =================== MetaMessage =====================================================
 

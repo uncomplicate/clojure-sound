@@ -3,7 +3,8 @@
             [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support]]
-             [core :refer [write! Info InfoProvider Open Timestamp Reset Broadcast Activity Type]]])
+             [core :refer [write! Info InfoProvider Open Timestamp Reset Broadcast Activity Type
+                           Format]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
@@ -15,9 +16,6 @@
 
 (defprotocol Matches
   (matches? [this other]))
-
-(defprotocol Format
-  (get-format [this]))
 
 (defprotocol AudioSystemProcedures
   (afile-format [this])
@@ -493,11 +491,16 @@
 
 (extend-type AudioFormat
   Support
-  (supported [this line]
-    (.isFormatSupported ^DataLine$Info line this))
+  (supported [af line]
+    (.isFormatSupported ^DataLine$Info line af))
   Matches
-  (matches? [this other]
-    (.matches this other)))
+  (matches? [af other]
+    (.matches af other))
+  Format
+  (property [af key]
+    (.getProperty af (name key)))
+  (properties [af]
+    (.properties af)))
 
 (defn audio-format
   ([from]
@@ -541,9 +544,6 @@
 (defn frame-size ^long  [^AudioFormat format]
   (.getFrameSize format))
 
-(defn property [^AudioFormat format key]
-  (.getProperty format (name key)))
-
 (defn sample-rate ^double [^AudioFormat format]
   (.getSampleRate format))
 
@@ -553,21 +553,22 @@
 (defn big-endian? [^AudioFormat format]
   (.isBigEndian format))
 
-(defn properties [^AudioFormat format]
-  (.properties format))
-
 ;; =================== AudioFileFormat =================================================
 
 (extend-type AudioFileFormat
-  Format
-  (get-format [aff]
-    (.getFormat aff))
   Frame
   (frame-length [aff]
     (.getFrameLength aff))
   Type
   (mytype [aff]
-    (.getType aff)))
+    (.getType aff))
+  Format
+  (get-format [aff]
+    (.getFormat aff))
+  (property [aff key]
+    (.getProperty aff (name key)))
+  (byte-length [aff]
+    (.getByteLength aff)))
 
 (extend-type AudioFileFormat$Type
   Support
@@ -578,12 +579,12 @@
   (.getExtension t))
 
 (defn aff-type
-  [aff]
-  (if (instance? AudioFileFormat aff)
-    (.getType ^AudioFileFormat aff)
-    (audio-file-format-type aff))
-  ([name extension])
-  (AudioFileFormat$Type. name extension))
+  ([aff]
+   (if (instance? AudioFileFormat aff)
+     (.getType ^AudioFileFormat aff)
+     (audio-file-format-type aff)))
+  ([name extension]
+   (AudioFileFormat$Type. name extension)))
 
 (defn audio-file-format
   ([this]
@@ -596,12 +597,6 @@
    (AudioFileFormat. (get audio-file-format-type type type)
                      (:format args) (:frame-length args)
                      (stringify-keys (dissoc properties :format :frame-length)))))
-
-(defn byte-length [^AudioFileFormat aff]
-  (.getByteLength aff))
-
-(defn property [^AudioFileFormat aff key]
-  (.getProperty aff (name key)))
 
 ;; ========================== InputStream ================================================
 
