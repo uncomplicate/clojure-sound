@@ -3,7 +3,7 @@
             [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support]]
-             [core :refer [write! Info InfoProvider Open Timestamp Reset Broadcast Activity]]])
+             [core :refer [write! Info InfoProvider Open Timestamp Reset Broadcast Activity Type]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
@@ -35,9 +35,6 @@
 (defprotocol Value
   (value [this])
   (value! [this val]))
-
-(defprotocol GetType
-  (get-type [this]))
 
 ;; ===================== Keyword coding ================================================
 
@@ -242,8 +239,8 @@
   Frame
   (frame-position [event]
     (.getFramePosition event))
-  GetType
-  (get-type [control]
+  Type
+  (mytype [control]
     (.getType control)))
 
 ;; =================== DataLine ==========================================
@@ -563,14 +560,14 @@
 
 (extend-type AudioFileFormat
   Format
-  (get-format [this]
-    (.getFormat this))
-  Support
-  (supported [type]
-    (AudioSystem/isLineSupported (get audio-file-format-type type type)))
+  (get-format [aff]
+    (.getFormat aff))
   Frame
-  (frame-length [clip]
-    (.getFrameLength clip)))
+  (frame-length [aff]
+    (.getFrameLength aff))
+  Type
+  (mytype [aff]
+    (.getType aff)))
 
 (extend-type AudioFileFormat$Type
   Support
@@ -662,8 +659,8 @@
     (.isControlSupported ^Line line this)))
 
 (extend-type Control
-  GetType
-  (get-type [control]
+  Type
+  (mytype [control]
     (.getType control)))
 
 ;; =================== BooleanControl ==================================================

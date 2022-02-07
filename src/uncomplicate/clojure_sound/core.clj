@@ -39,6 +39,9 @@
   (start! [this])
   (stop! [this]))
 
+(defprotocol Type
+  (mytype [this]))
+
 (defn supported?
   ([feature]
    (supported feature))

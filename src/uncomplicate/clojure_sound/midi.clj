@@ -4,7 +4,7 @@
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support SequenceSource set-sequence Load
                                load-instruments unload-instruments]]
-             [core :refer [write! Info InfoProvider Open Timestamp Reset Broadcast Activity]]])
+             [core :refer [write! Info InfoProvider Open Timestamp Reset Broadcast Activity Type]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.midi MidiSystem MidiDevice MidiDevice$Info MidiFileFormat MidiChannel
@@ -69,7 +69,10 @@
     (.getMidiDevice transmitter))
   MidiDevice$Info
   (device [info]
-    (MidiSystem/getMidiDevice info)))
+    (MidiSystem/getMidiDevice info))
+  Synthesizer
+  (soundbank [synth]
+    (.getDefaultSoundbank synth)))
 
 (defn device-info []
   (MidiSystem/getMidiDeviceInfo))
@@ -499,9 +502,6 @@
 (defn channels [^Synthesizer synth]
   (.getChannels synth))
 
-(defn soundbank [^Synthesizer synth]
-  (.getDefaultSoundbank synth))
-
 (defn latency ^long [^Synthesizer synth]
   (.getLatency synth))
 
@@ -537,6 +537,28 @@
 
 (defn patch [^Instrument instrument]
   (.getPatch instrument))
+
+;; =================== MetaMessage =====================================================
+
+(extend-type MetaMessage
+  Type
+  (mytype [message]
+    (.getType message)))
+
+(defn meta-message
+  ([]
+   (MetaMessage.))
+  ([type ^bytes data]
+   (MetaMessage. type data (alength data)))
+  ([type data length]
+   (MetaMessage. type data length)))
+
+(defn data [^MetaMessage message]
+  (.getData message))
+
+(defn set! [^MetaMessage message! type data length]
+  (.setMessage message! type data length)
+  message!)
 
 ;; =================== User friendly printing ==========================================
 
@@ -575,3 +597,11 @@
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Patch;")
   [patches ^java.io.Writer w]
   (.write w (pr-str (seq patches))))
+
+(defmethod print-method MidiMessage
+  [message ^java.io.Writer w]
+  (.write w (pr-str (dissoc (bean message) :class))))
+
+(defmethod print-method MetaMessage
+  [message ^java.io.Writer w]
+  (.write w (pr-str (dissoc (bean message) :class))))
