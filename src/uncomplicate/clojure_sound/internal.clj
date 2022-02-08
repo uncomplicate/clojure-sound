@@ -12,6 +12,9 @@
   (load-instruments [source synth])
   (unload-instruments [source synth]))
 
+(defprotocol ReceiverProvider
+  (get-receiver [this]))
+
 (defn name-key [s]
   (-> (str/trim s)
       (str/replace " " "")

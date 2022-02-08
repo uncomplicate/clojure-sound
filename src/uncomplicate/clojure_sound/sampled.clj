@@ -181,6 +181,9 @@
   (release [this]
     (.close this)
     true)
+  InfoProvider
+  (info [line]
+    (.getLineInfo this))
   Open
   (open [line]
     (.open line)
@@ -197,6 +200,11 @@
   (ignore! [line! listener]
     (.removeLineListener line! listener)
     line!))
+
+(extend-type clojure.lang.Keyword
+  InfoProvider
+  (info [kw]
+    (port-info kw)))
 
 (extend-type Line$Info
   Matches
@@ -746,6 +754,7 @@
 
 ;; =================== User friendly printing ==========================================
 
+
 (defmethod print-method Line$Info
   [info ^java.io.Writer w]
   (.write w (pr-str (-> (bean info) (dissoc :class)
@@ -754,6 +763,10 @@
 (defmethod print-method Mixer$Info
   [info ^java.io.Writer w]
   (.write w (pr-str (bean info))))
+
+(defmethod print-method Mixer
+  [mixer ^java.io.Writer w]
+  (.write w (pr-str (assoc (bean (mixer-info mixer)) :class "Mixer"))))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer$Info;")
   [info ^java.io.Writer w]

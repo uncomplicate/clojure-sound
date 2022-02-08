@@ -3,9 +3,10 @@
   (:require [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support SequenceSource set-sequence get-sequence
-                               Load load-instruments unload-instruments simple-name key-name]]
+                               Load load-instruments unload-instruments simple-name key-name
+                               ReceiverProvider get-receiver]]
              [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
-                           Format active?]]])
+                           Format active? InfoProvider]]])
   (:import clojure.lang.ILookup
            java.lang.reflect.Field
            java.net.URL
@@ -154,8 +155,11 @@
   (soundbank [resource]
     (.getSoundbank resource)))
 
-(defn device-info []
-  (MidiSystem/getMidiDeviceInfo))
+(defn device-info
+  ([]
+   (MidiSystem/getMidiDeviceInfo))
+  ([^MidiDevice device]
+   (.getDeviceInfo device)))
 
 (defn file-types
   (^ints []
@@ -163,8 +167,11 @@
   (^ints [sequence]
    (MidiSystem/getMidiFileTypes sequence)))
 
-(defn receiver []
-  (MidiSystem/getReceiver))
+(defn receiver
+  ([]
+   (MidiSystem/getReceiver))
+  ([provider]
+   (get-receiver provider)))
 
 (defn sequencer
   ([]
@@ -175,8 +182,11 @@
 (defn synthesizer []
   (MidiSystem/getSynthesizer))
 
-(defn transmitter []
-  (MidiSystem/getTransmitter))
+(defn transmitter
+  ([]
+   (MidiSystem/getTransmitter))
+  ([^MidiDevice device]
+    (.getTransmitter device)))
 
 (extend-protocol Support
   Integer
@@ -220,6 +230,9 @@
   InfoProvider
   (info [device]
     (.getDeviceInfo device))
+  ReceiverProvider
+  (get-receiver [device]
+    (.getReceiver device))
   Info
   (description [device]
     (.getDescription (.getDeviceInfo device)))
@@ -243,15 +256,6 @@
 
 (defn ^long max-transmitters [^MidiDevice device]
   (.getMaxTransmitters device))
-
-(defn receiver [^MidiDevice device]
-  (.getReceiver device))
-
-(defn receivers [^MidiDevice device]
-  (.getReceivers device))
-
-(defn transmitter [^MidiDevice device]
-  (.getTransmitter device))
 
 (defn transmitters [^MidiDevice device]
   (.getTransmitters device))
@@ -392,13 +396,13 @@
 ;; ============================= Transmitter ================================
 
 (extend-type Transmitter
+  ReceiverProvider
+  (get-receiver [transmitter]
+    (.getReceiver transmitter))
   Releaseable
   (release [this]
     (.close this)
     true))
-
-(defn receiver [^Transmitter transmitter]
-  (.getReceiver transmitter))
 
 (defn receiver! [^Transmitter transmitter! receiver]
   (.setReceiver transmitter! receiver)
@@ -866,6 +870,18 @@
   [info ^java.io.Writer w]
   (.write w (pr-str (update (bean info) :class simple-name))))
 
+(defmethod print-method MidiDevice
+  [device ^java.io.Writer w]
+  (.write w (pr-str (assoc (bean (device-info device)) :class "Mixer"))))
+
+(defmethod print-method Receiver
+  [receiver ^java.io.Writer w]
+  (.write w (pr-str (bean receiver))))
+
+(defmethod print-method Transmitter
+  [transmitter ^java.io.Writer w]
+  (.write w (pr-str (bean transmitter))))
+
 (defmethod print-method Soundbank
   [soundbank ^java.io.Writer w]
   (.write w (pr-str (update (bean soundbank) :class simple-name))))
@@ -929,7 +945,5 @@
   (.write w (pr-str (update (bean track) :class simple-name))))
 
 (defmethod print-method VoiceStatus
-  [^VoiceStatus vs ^java.io.Writer w]
-  (.write w (pr-str {:class "VoiceStatus"
-                     :active (.active vs)
-                     })))
+  [^VoiceStatus status ^java.io.Writer w]
+  (.write w (pr-str (voice-status-info status))))
