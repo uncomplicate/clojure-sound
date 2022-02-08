@@ -230,7 +230,7 @@
   (.getLineClass ^Line$Info (get port-info info info)))
 
 
-(defn line-event [line event-type ^long position]
+(defn event [line event-type ^long position]
   (LineEvent. line event-type position))
 
 (extend-type LineEvent
@@ -259,6 +259,8 @@
   Activity
   (running? [line]
     (.isRunning line))
+  (active? [line]
+    (.isActive line))
   (start! [line!]
     (.start line!)
     line!)
@@ -288,9 +290,6 @@
 
 (defn level ^double [^DataLine line]
   (.getLevel line))
-
-(defn active? [^DataLine line]
-  (.isActive line))
 
 ;; ====================== Clip =================================================
 

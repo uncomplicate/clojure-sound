@@ -19,6 +19,11 @@
       (str/replace "_" "-")
       keyword))
 
+(defn key-name [k]
+  (-> (name k)
+      (str/trim)
+      (str/replace "-" "_")))
+
 (defmethod print-method (Class/forName "[Ljava.lang.Object;")
   [objects ^java.io.Writer w]
   (.write w (pr-str (seq objects))))

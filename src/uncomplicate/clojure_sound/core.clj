@@ -23,7 +23,7 @@
 
 (defprotocol Timing
   (resolution [this])
-  (division-type [this])
+  (division [this])
   (ms-length [this])
   (ms-position [this])
   (ms-position! [this microseconds]))
@@ -38,6 +38,7 @@
 (defprotocol Activity
   (running? [this])
   (recording? [this])
+  (active? [this])
   (start! [this])
   (stop! [this]))
 

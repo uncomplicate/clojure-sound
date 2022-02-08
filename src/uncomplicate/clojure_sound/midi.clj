@@ -3,10 +3,12 @@
   (:require [uncomplicate.commons.core :refer [Releaseable]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support SequenceSource set-sequence get-sequence
-                               Load load-instruments unload-instruments simple-name]]
+                               Load load-instruments unload-instruments simple-name key-name]]
              [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
-                           Format]]])
-  (:import java.net.URL
+                           Format active?]]])
+  (:import clojure.lang.ILookup
+           java.lang.reflect.Field
+           java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.midi MidiSystem MidiDevice MidiDevice$Info MidiFileFormat MidiChannel
             Receiver MidiDeviceReceiver MidiDeviceTransmitter Sequencer Soundbank Synthesizer
@@ -23,6 +25,12 @@
 (defprotocol Data
   (data [this])
   (message! [message status] [message arg1 arg2 arg3] [message command channel data1 data2]))
+
+(defprotocol Tick
+  (ticks [this]))
+
+(defprotocol Event
+  (event [this arg]))
 
 ;; ===================== Keyword coding ================================================
 
@@ -456,7 +464,10 @@
     sequencer!)
   (stop! [sequencer!]
     (.stop sequencer!)
-    sequencer!))
+    sequencer!)
+  Tick
+  (ticks [sequencer]
+    (.getTickLength sequencer)))
 
 (extend-protocol SequenceSource
   InputStream
@@ -531,9 +542,6 @@
 (defn tempo-mpq! [^Sequencer sequencer! mpq]
   (.setTempoInMPQ sequencer! mpq)
   sequencer!)
-
-(defn tick-length ^long [^Sequencer sequencer]
-  (.getTickLength sequencer))
 
 (defn tick-position ^long [^Sequencer sequencer]
   (.getTickPosition sequencer))
@@ -626,7 +634,7 @@
   Timing
   (ms-length [mff]
     (.getMicrosecondLength mff))
-  (division-type [mff]
+  (division [mff]
     (.getDivisionType mff))
   (resolution [mff]
     (.getResolution mff))
@@ -642,14 +650,19 @@
     (.getType mff)))
 
 (defn midi-file-format
-  ([type division-type resolution bytes microseconds]
-   (MidiFileFormat. type (get timing-type division-type division-type)
+  ([type division resolution bytes microseconds]
+   (MidiFileFormat. type (get timing-type division division)
                     resolution bytes microseconds))
-  ([type division-type resolution bytes microseconds properties]
-   (MidiFileFormat. type (get timing-type division-type division-type)
+  ([type division resolution bytes microseconds properties]
+   (MidiFileFormat. type (get timing-type division division)
                     resolution bytes microseconds properties)))
 
 ;; =================== MidiMessage =====================================================
+
+(extend-type MidiMessage
+  Event
+  (event [message tick]
+    (MidiEvent. message tick)))
 
 (defn message-bytes [^MidiMessage message]
   (.getMessage message))
@@ -682,10 +695,7 @@
   ([type data length]
    (MetaMessage. type data length)))
 
-;; =================== MidiEvent =======================================================
-
-(defn midi-event [message tick]
-  (MidiEvent. message tick))
+;; =================== MidiEvent ======================================================
 
 (defn message [^MidiEvent event]
   (.getMessage event))
@@ -714,20 +724,23 @@
 
 (extend-type Sequence
   Timing
-  (ms-length [mff]
-    (.getMicrosecondLength mff))
-  (division-type [s]
+  (ms-length [s]
+    (.getMicrosecondLength s))
+  (division [s]
     (.getDivisionType s))
   (resolution [s]
-    (.getResolution s)))
+    (.getResolution s))
+  Tick
+  (ticks [s]
+    (.getTickLength s)))
 
 (defn sequence
   ([source]
    (get-sequence source))
-  ([division-type ^long resolution]
-   (Sequence. (get timing-type division-type division-type) resolution))
-  ([division-type ^long resolution ^long num-tracks]
-   (Sequence. (get timing-type division-type division-type) resolution num-tracks)))
+  ([division ^long resolution]
+   (Sequence. (get timing-type division division) resolution))
+  ([division ^long resolution ^long num-tracks]
+   (Sequence. (get timing-type division division) resolution num-tracks)))
 
 (defn track [^Sequence sequence]
   (.createTrack sequence))
@@ -740,9 +753,6 @@
 
 (defn patches [^Sequence sequence]
   (.getPatchList sequence))
-
-(defn tick-length ^long [^Sequence sequence]
-  (.getTickLength sequence))
 
 ;; =================== ShortMessage =====================================================
 
@@ -802,6 +812,53 @@
    (SysexMessage. (get message-status status status) data length)))
 
 ;; =================== Track ==========================================
+
+(extend-type Track
+  Event
+  (event [track i]
+    (.get track i))
+  Tick
+  (ticks [track]
+    (.ticks track)))
+
+(defn add! [^Track track! event]
+  (.add track! event))
+
+(defn remove! [^Track track! event]
+  (.remove track! event))
+
+(defn event-count ^long [^Track track]
+  (.size track))
+
+;; =================== Track ==========================================
+
+(extend-type VoiceStatus
+  Activity
+  (active? [status]
+    (.active status)))
+
+(defn voice-status-info
+  ([^VoiceStatus status]
+   (into {:class "VoiceStatus"}
+         (if (active? status)
+           (map (fn [^Field field]
+                  (vector (name-key (.getName field)) (.get field status)))
+                (.getDeclaredFields VoiceStatus))
+           [[:active false]])))
+  ([^VoiceStatus status key]
+   (if (active? status)
+     (case key
+       :active (.active status)
+       :bean (.bank status)
+       :channel (.channel status)
+       :note (.note status)
+       :program (.program status)
+       :volume (.volume status)
+       (try
+         (.get (.getDeclaredField (class status) (key-name key)) status)
+         (catch NoSuchFieldException e nil)
+         (catch IllegalAccessException e nil)))
+     (if (= key :active) false nil))))
 
 ;; =================== User friendly printing ==========================================
 
@@ -866,3 +923,13 @@
 (defmethod print-method Sequence
   [s ^java.io.Writer w]
   (.write w (pr-str (update (bean s) :class simple-name))))
+
+(defmethod print-method Track
+  [track ^java.io.Writer w]
+  (.write w (pr-str (update (bean track) :class simple-name))))
+
+(defmethod print-method VoiceStatus
+  [^VoiceStatus vs ^java.io.Writer w]
+  (.write w (pr-str {:class "VoiceStatus"
+                     :active (.active vs)
+                     })))
