@@ -4,7 +4,7 @@
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support]]
              [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
-                           Format]]])
+                           Format get-format]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
@@ -20,7 +20,7 @@
 (defprotocol AudioSystemProcedures
   (afile-format [this])
   (audio-input-stream [this] [target-format source-stream])
-  (target-encodings [this] [target-format source-stream])
+  (encodings [this] [target-format source-stream])
   (convertible? [target source]))
 
 (defprotocol Available
@@ -147,14 +147,14 @@
   AudioFormat
   (audio-input-stream [target source]
     (AudioSystem/getAudioInputStream target ^AudioInputStream source))
-  (target-encodings [source]
+  (encodings [source]
     (AudioSystem/getTargetEncodings source))
   (convertible? [target source]
     (AudioSystem/isConversionSupported target ^AudioFormat source))
   AudioFormat$Encoding
   (audio-input-stream [target source]
     (AudioSystem/getAudioInputStream target ^AudioInputStream source))
-  (target-encodings [source]
+  (encodings [source]
     (AudioSystem/getTargetEncodings source))
   (convertible? [target source]
     (AudioSystem/isConversionSupported target ^AudioFormat source)))
@@ -603,7 +603,7 @@
   ([type args]
    (AudioFileFormat. (get audio-file-format-type type type)
                      (:format args) (:frame-length args)
-                     (stringify-keys (dissoc properties :format :frame-length)))))
+                     (stringify-keys (dissoc args :format :frame-length)))))
 
 ;; ========================== InputStream ================================================
 
@@ -753,7 +753,6 @@
   (.getLateReflectionIntensity reverb))
 
 ;; =================== User friendly printing ==========================================
-
 
 (defmethod print-method Line$Info
   [info ^java.io.Writer w]
