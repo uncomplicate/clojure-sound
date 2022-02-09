@@ -68,7 +68,7 @@
 (defmulti write! (partial mapv class))
 
 (defmethod write! :default [& args]
-  (throw (ex-info (format "Unsupported write request.") {:type :sound-error :args args})))
+  (throw (ex-info "Unsupported write request." {:type :sound-error :args args})))
 
 (defmethod print-method (Class/forName "[I")
   [arr ^java.io.Writer w]

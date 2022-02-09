@@ -293,7 +293,7 @@
   (.noteOff channel! note velocity)
   channel!)
 
-(defn sound-off [^MidiChannel channel!]
+(defn sound-off! [^MidiChannel channel!]
   (.allSoundOff channel!)
   channel!)
 
@@ -307,11 +307,11 @@
   (.setChannelPressure channel! pressure)
   channel!)
 
-(defn controller ^long [^MidiChannel channel! ^long controller]
-  (.getController channel! controller))
+(defn controller ^long [^MidiChannel channel ^long controller]
+  (.getController channel controller))
 
-(defn mono [^MidiChannel channel!]
-  (.getMono channel!))
+(defn mono [^MidiChannel channel]
+  (.getMono channel))
 
 (defn mono!
   ([^MidiChannel channel!]
