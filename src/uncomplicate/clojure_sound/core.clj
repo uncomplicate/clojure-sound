@@ -45,7 +45,6 @@
 
 (defprotocol Activity
   (running? [this])
-  (recording? [this])
   (active? [this])
   (start! [this])
   (stop! [this]))

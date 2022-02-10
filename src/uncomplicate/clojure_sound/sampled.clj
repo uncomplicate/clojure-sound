@@ -215,6 +215,9 @@
     (port-info kw)))
 
 (extend-type Line$Info
+  InfoProvider
+  (info [info]
+    info)
   Matches
   (matches? [this other]
     (.matches this other))
@@ -397,6 +400,9 @@
 ;; =========================== Mixer ===========================================
 
 (extend-type Mixer$Info
+  InfoProvider
+  (info [info]
+    info)
   Info
   (description [info]
     (.getDescription info))
@@ -520,8 +526,9 @@
 (defn audio-format
   ([from]
    (if (map? from)
-     (let [{:keys [encoding sample-rate sample-size-bits channels frame-size frame-rate signed endian properties]
-            :or {channels 1 endian :little-endian signed :signed}} from]
+     (let [{:keys [encoding sample-rate sample-size-bits channels
+                   frame-size frame-rate signed endian properties]
+            :or {channels 1 sample-size-bits 16 endian :little-endian signed :signed}} from]
        (if encoding
          (if properties
            (audio-format encoding sample-rate sample-size-bits channels frame-size

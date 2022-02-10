@@ -223,6 +223,9 @@
 ;; ============================= MidiDevice ================================
 
 (extend-type MidiDevice$Info
+  InfoProvider
+  (info [info]
+    info)
   Info
   (description [info]
     (.getDescription info))
@@ -252,7 +255,7 @@
   Open
   (open [device]
     (.open device))
-  (.isOpen [device]
+  (open? [device]
     (.isOpen device))
   Timing
   (ms-position [device]
@@ -298,10 +301,10 @@
   channel!)
 
 (defn pressure
-  (^long [^MidiChannel channel!]
-   (.getChannelPressure channel!))
-  (^long [^MidiChannel channel! ^long note]
-   (.getPolyPressure channel! note)))
+  (^long [^MidiChannel channel]
+   (.getChannelPressure channel))
+  (^long [^MidiChannel channel ^long note]
+   (.getPolyPressure channel note)))
 
 (defn pressure! [^MidiChannel channel! ^long pressure]
   (.setChannelPressure channel! pressure)
@@ -499,17 +502,17 @@
   (.setLoopCount sequencer! count)
   sequencer!)
 
-(defn end ^long [^Sequencer sequencer]
+(defn end-point ^long [^Sequencer sequencer]
   (.getLoopEndPoint sequencer))
 
-(defn end! [^Sequencer sequencer! tick]
+(defn end-point! [^Sequencer sequencer! tick]
   (.setLoopEndPoint sequencer! tick)
   sequencer!)
 
-(defn start ^long [^Sequencer sequencer]
+(defn start-point ^long [^Sequencer sequencer]
   (.getLoopStartPoint sequencer))
 
-(defn start! [^Sequencer sequencer! tick]
+(defn start-point! [^Sequencer sequencer! tick]
   (.setLoopStartPoint sequencer! tick)
   sequencer!)
 
@@ -879,7 +882,7 @@
 
 (defmethod print-method MidiDevice
   [device ^java.io.Writer w]
-  (.write w (pr-str (assoc (bean (device-info device)) :class "Mixer"))))
+  (.write w (pr-str (assoc (bean (device-info device)) :class (simple-name (class device))))))
 
 (defmethod print-method Receiver
   [receiver ^java.io.Writer w]
