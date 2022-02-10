@@ -186,8 +186,14 @@
   ([connected?]
    (MidiSystem/getSequencer connected?)))
 
+(defn sequencer? [device]
+  (instance? Sequencer device))
+
 (defn synthesizer []
   (MidiSystem/getSynthesizer))
+
+(defn synthesizer? [device]
+  (instance? Synthesizer device))
 
 (defn transmitter
   ([]
@@ -254,7 +260,8 @@
     (.getVersion (.getDeviceInfo device)))
   Open
   (open [device]
-    (.open device))
+    (.open device)
+    device)
   (open? [device]
     (.isOpen device))
   Timing

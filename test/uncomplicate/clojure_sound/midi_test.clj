@@ -3,10 +3,17 @@
             [uncomplicate.commons.core :refer [close]]
             [uncomplicate.clojure-sound
              [core :refer :all]
-             [midi :refer :all]]))
+             [midi :refer :all]])
+  (:import [javax.sound.midi MidiUnavailableException]))
 
-(facts "Query Midi System for device information."
-       (< 0 (count (device-info))) => true)
+(facts "Obtaining Default Devices."
+       (myname (sequencer)) => "Real Time Sequencer"
+       (myname (synthesizer)) => "Gervill"
+       (receiver) => (throws MidiUnavailableException)
+       (transmitter) => (throws MidiUnavailableException)
+       (<= 2 (count (device-info))) => true
+       (< 0 (count (filter (comp sequencer? device) (device-info)))) => true
+       (< 0 (count (filter (comp synthesizer? device) (device-info)))) => true)
 
 (let [gervill (first (filter (comp (partial = "Gervill") myname) (device-info)))]
   (facts "Test Gervill: Info."
@@ -18,7 +25,14 @@
   (facts "Test Gervill: InfoProvider."
          (info gervill) => gervill)
 
-  (facts "Test Gervill: MidiDevice."
+  (facts "Test Gervill: Opening Devices."
          (device gervill) => truthy
          (let [dev (device gervill)]
-           )))
+           (sequencer? dev) => false
+           (synthesizer? dev) => true
+           (max-polyphony dev) => 64
+           (open? dev) => false
+           (open dev) => dev
+           (open? dev) => true
+           (close dev) => dev
+           (open? dev) => false)))
