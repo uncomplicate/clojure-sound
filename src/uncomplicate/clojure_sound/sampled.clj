@@ -273,7 +273,7 @@
   (available [line]
     (.available line))
   Timing
-  (ms-position [line]
+  (micro-position [line]
     (.getMicrosecondPosition line))
   Activity
   (running? [line]
@@ -314,21 +314,21 @@
 
 (extend-type Clip
   Open
-  (open [clip stream]
+  (open! [clip stream]
     (.open clip ^AudioInputStream stream)
     clip)
-  (open [clip format data offset buffer-size]
+  (open! [clip format data offset buffer-size]
     (.open clip ^AudioFormat format data offset buffer-size)
     clip)
   Frame
   (frame-length [clip]
     (.getFrameLength clip))
   Timing
-  (ms-length [clip]
+  (micro-length [clip]
     (.getMicrosecondLength clip))
-  (ms-position [line]
+  (micro-position [line]
     (.getMicrosecondPosition line))
-  (ms-position! [clip microseconds]
+  (micro-position! [clip microseconds]
     (.setMicrosecondPosition clip microseconds)))
 
 (defn clip
@@ -357,10 +357,10 @@
 
 (extend-type SourceDataLine
   Open
-  (open [line format]
+  (open! [line format]
     (.open line ^AudioFormat format)
     line)
-  (open [line format buffer-size]
+  (open! [line format buffer-size]
     (.open line ^AudioFormat format buffer-size)
     line))
 
@@ -380,10 +380,10 @@
 
 (extend-type TargetDataLine
   Open
-  (open [line format]
+  (open! [line format]
     (.open line ^AudioFormat format)
     line)
-  (open [line format buffer-size]
+  (open! [line format buffer-size]
     (.open line ^AudioFormat format buffer-size)
     line))
 

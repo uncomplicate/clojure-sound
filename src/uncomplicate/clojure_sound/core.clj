@@ -26,15 +26,15 @@
   (info [this]))
 
 (defprotocol Open
-  (open [this!] [this! buffer-size] [this! format data offset buffer-size])
+  (open! [this!] [this! buffer-size] [this! format data offset buffer-size])
   (open? [this!]))
 
 (defprotocol Timing
   (resolution [this])
   (division [this])
-  (ms-length [this])
-  (ms-position [this])
-  (ms-position! [this microseconds]))
+  (micro-length [this])
+  (micro-position [this])
+  (micro-position! [this microseconds]))
 
 (defprotocol Reset
   (re-set! [this!]))
@@ -64,10 +64,15 @@
   ([this feature]
    (supported feature this)))
 
-(defmulti write! (partial mapv class))
+(defmulti write! (fn [& args] (mapv class args)))
 
 (defmethod write! :default [& args]
   (throw (ex-info "Unsupported write request." {:type :sound-error :args args})))
+
+(defmulti connect! (fn [& args] (mapv class args)))
+
+(defmethod connect! :default [& args]
+  (throw (ex-info "Unsupported connection between these endpoints." {:type :sound-error :args args})))
 
 (defmethod print-method (Class/forName "[I")
   [arr ^java.io.Writer w]

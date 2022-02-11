@@ -8,13 +8,13 @@
 
 (ns uncomplicate.clojure-sound.midi
   (:refer-clojure :exclude [sequence])
-  (:require [uncomplicate.commons.core :refer [Releaseable]]
+  (:require [uncomplicate.commons.core :refer [Releaseable Closeable close!]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support SequenceSource set-sequence get-sequence
                                Load load-instruments unload-instruments simple-name key-name
                                ReceiverProvider get-receiver]]
              [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
-                           Format active? InfoProvider]]])
+                           Format active? InfoProvider connect!]]])
   (:import clojure.lang.ILookup
            java.lang.reflect.Field
            java.net.URL
@@ -242,6 +242,18 @@
   (version [info]
     (.getVersion info)))
 
+(defn ^long max-receivers [^MidiDevice device]
+  (.getMaxReceivers device))
+
+(defn ^long max-transmitters [^MidiDevice device]
+  (.getMaxTransmitters device))
+
+(defn receivers [^MidiDevice device]
+  (.getReceivers device))
+
+(defn transmitters [^MidiDevice device]
+  (.getTransmitters device))
+
 (extend-type MidiDevice
   InfoProvider
   (info [device]
@@ -259,23 +271,20 @@
   (version [device]
     (.getVersion (.getDeviceInfo device)))
   Open
-  (open [device]
+  (open! [device]
     (.open device)
     device)
   (open? [device]
     (.isOpen device))
+  Closeable
+  (close! [device]
+    (close! (transmitters device))
+    (close! (receivers device))
+    (.close device)
+    device)
   Timing
-  (ms-position [device]
+  (micro-position [device]
     (.getMicrosecondPosition device)))
-
-(defn ^long max-receivers [^MidiDevice device]
-  (.getMaxReceivers device))
-
-(defn ^long max-transmitters [^MidiDevice device]
-  (.getMaxTransmitters device))
-
-(defn transmitters [^MidiDevice device]
-  (.getTransmitters device))
 
 ;; ============================= MidiChannel ================================
 
@@ -406,9 +415,12 @@
     (.close this)
     true))
 
-(defn send! [^Receiver receiver! ^MidiMessage message ^long timestamp]
-  (.send receiver! message timestamp)
-  receiver!)
+(defn send!
+  ([^Receiver receiver! ^MidiMessage message ^long timestamp]
+   (.send receiver! message timestamp)
+   receiver!)
+  ([^Receiver receiver! ^MidiMessage message]
+   (send! receiver! message -1)))
 
 ;; ============================= Transmitter ================================
 
@@ -421,9 +433,29 @@
     (.close this)
     true))
 
-(defn receiver! [^Transmitter transmitter! receiver]
+(defmethod connect! [Transmitter Receiver]
+  [^Transmitter transmitter! receiver]
   (.setReceiver transmitter! receiver)
   transmitter!)
+
+(defmethod connect! [MidiDevice Receiver]
+  [device receiver]
+  (let [tr (transmitter device)]
+    (.setReceiver ^Transmitter tr receiver)
+    tr))
+
+(defmethod connect! [Transmitter MidiDevice]
+  [^Transmitter transmitter! device]
+  (let [rc (receiver device)]
+    (.setReceiver transmitter! rc)
+    transmitter!))
+
+(defmethod connect! [MidiDevice MidiDevice]
+  [in out]
+  (let [tr (transmitter in)
+        rc (receiver out)]
+    (.setReceiver ^Transmitter tr rc)
+    tr))
 
 ;; ============================= Soundbank  ================================
 
@@ -470,11 +502,11 @@
   (ignore! [sequencer! listener controllers]
     (.removeControllerEventListener sequencer! listener controllers))
   Timing
-  (ms-length [sequencer]
+  (micro-length [sequencer]
     (.getMicrosecondLength sequencer))
-  (ms-position [sequencer]
+  (micro-position [sequencer]
     (.getMicrosecondPosition sequencer))
-  (ms-position! [sequencer! microseconds]
+  (micro-position! [sequencer! microseconds]
     (.setMicrosecondPosition sequencer! microseconds)
     sequencer!)
   Activity
@@ -653,7 +685,7 @@
 
 (extend-type MidiFileFormat
   Timing
-  (ms-length [mff]
+  (micro-length [mff]
     (.getMicrosecondLength mff))
   (division [mff]
     (.getDivisionType mff))
@@ -745,7 +777,7 @@
 
 (extend-type Sequence
   Timing
-  (ms-length [s]
+  (micro-length [s]
     (.getMicrosecondLength s))
   (division [s]
     (.getDivisionType s))
@@ -786,7 +818,7 @@
     (.setMessage sm! (get message-status status status) data1 data2)
     sm!)
   (message! [sm! command channel data1 data2]
-    (.setMessage sm! command channel data1 data2)
+    (.setMessage sm! (get message-status command command) channel data1 data2)
     sm!))
 
 (defn short-message
