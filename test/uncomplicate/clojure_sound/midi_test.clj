@@ -111,16 +111,19 @@
 
 (facts "Using Sequencer."
        (let [sqcr (sequencer)
-             synth (synthesizer)
-             maple (sequence (clojure.java.io/resource "maple.mid"))]
-         ;;(connect! sqcr synth)
-         (open! sqcr) => sqcr
-         ;;(open! synth) => synth
-         (sequence! sqcr maple) => sqcr
-         (listen! sqcr #((when (= (mytype %2) :end-of-track)
-                           (Thread/sleep 200)
-                           (stop! sqcr)
-                           (close! synth)
-                           (close! sqcr))))
-         (start! sqcr)
-         (running? sqcr) => true))
+             maple (sequence (clojure.java.io/resource "maple.mid"))
+             cleanup (promise)]
+         (try
+           (myname (device (receiver (first (transmitters (sequencer)))))) => "Gervill"
+           (open! sqcr) => sqcr
+           (sequence! sqcr maple) => sqcr
+           (listen! sqcr #((when (= (mytype %2) :end-of-track)
+                             (stop! sqcr)
+                             (close! sqcr) ;; Auto-close
+                             (deliver cleanup :confirmed))))
+           (start! sqcr)
+           (running? sqcr) => true
+           (deref cleanup) => :confirmed
+           (finally ;; So I can interrupt the music while testing...
+             (stop! sqcr)
+             (close! sqcr)))))
