@@ -8,7 +8,7 @@
 
 (ns uncomplicate.clojure-sound.sampled
   (:require [clojure.walk :refer [stringify-keys]]
-            [uncomplicate.commons.core :refer [Releaseable]]
+            [uncomplicate.commons.core :refer [Releaseable close!]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support]]
              [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
@@ -184,10 +184,18 @@
 
 ;; =========================== Line ============================================
 
+(deftype LineListenerFunction [f]
+  LineListener
+  (update [listener event]
+    (f listener event)))
+
+(defn line-listener [f]
+  (->LineListenerFunction f))
+
 (extend-type Line
   Releaseable
   (release [this]
-    (.close this)
+    (close! this)
     true)
   InfoProvider
   (info [line]
@@ -203,7 +211,10 @@
     (.getLineInfo this))
   Broadcast
   (listen! [line! listener]
-    (.addLineListener line! listener)
+    (.addLineListener line!
+                      (if (instance? LineListener listener)
+                        listener
+                        (->LineListenerFunction listener)))
     line!)
   (ignore! [line! listener]
     (.removeLineListener line! listener)
@@ -314,12 +325,13 @@
 
 (extend-type Clip
   Open
-  (open! [clip stream]
-    (.open clip ^AudioInputStream stream)
-    clip)
-  (open! [clip format data offset buffer-size]
-    (.open clip ^AudioFormat format data offset buffer-size)
-    clip)
+  (open!
+    ([clip stream]
+     (.open clip ^AudioInputStream stream)
+     clip)
+    ([clip format data offset buffer-size]
+     (.open clip ^AudioFormat format data offset buffer-size)
+     clip))
   Frame
   (frame-length [clip]
     (.getFrameLength clip))
@@ -357,12 +369,13 @@
 
 (extend-type SourceDataLine
   Open
-  (open! [line format]
-    (.open line ^AudioFormat format)
-    line)
-  (open! [line format buffer-size]
-    (.open line ^AudioFormat format buffer-size)
-    line))
+  (open!
+    ([line format]
+     (.open line ^AudioFormat format)
+     line)
+    ([line format buffer-size]
+     (.open line ^AudioFormat format buffer-size)
+     line)))
 
 (defmethod write! [AudioInputStream File]
   [in out! file-type]
@@ -380,12 +393,13 @@
 
 (extend-type TargetDataLine
   Open
-  (open! [line format]
-    (.open line ^AudioFormat format)
-    line)
-  (open! [line format buffer-size]
-    (.open line ^AudioFormat format buffer-size)
-    line))
+  (open!
+    ([line format]
+     (.open line ^AudioFormat format)
+     line)
+    ([line format buffer-size]
+     (.open line ^AudioFormat format buffer-size)
+     line)))
 
 ;; =========================== Port ============================================
 

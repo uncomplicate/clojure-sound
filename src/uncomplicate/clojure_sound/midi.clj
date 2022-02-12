@@ -109,6 +109,40 @@
   {SysexMessage/SPECIAL_SYSTEM_EXCLUSIVE :special-system-exclusive
    SysexMessage/SYSTEM_EXCLUSIVE :system-exclusive})
 
+(def meta-message-type
+  {:sequence-number 0x00
+   :text 0x01
+   :copyright-notice 0x02
+   :track-name 0x03
+   :instrument-name 0x04
+   :lyrics 0x05
+   :marker 0x06
+   :cue-point 0x07
+   :channel-prefix 0x20
+   :end-of-track 0x2F
+   :set-tempo 0x51
+   :smpte-offset 0x54
+   :time-signature 0x58
+   :key-signature 0x59
+   :sequencer-specific 0x7F})
+
+(def meta-message-type-key
+  {0x00 :sequence-number
+   0x01 :text
+   0x02 :copyright-notice
+   0x03 :track-name
+   0x04 :instrument-name
+   0x05 :lyrics
+   0x06 :marker
+   0x07 :cue-point
+   0x20 :channel-prefix
+   0x2F :end-of-track
+   0x51 :set-tempo
+   0x54 :smpte-offset
+   0x58 :time-signature
+   0x59 :key-signature
+   0x7F :sequencer-specific})
+
 ;; =========================== MidiSystem ====================================
 
 (defprotocol MidiSystemProcedures
@@ -255,6 +289,10 @@
   (.getTransmitters device))
 
 (extend-type MidiDevice
+  Releaseable
+  (release [this]
+    (close! this)
+    true)
   InfoProvider
   (info [device]
     (.getDeviceInfo device))
@@ -412,7 +450,7 @@
 (extend-type Receiver
   Releaseable
   (release [this]
-    (.close this)
+    (close! this)
     true))
 
 (defn send!
@@ -430,7 +468,7 @@
     (.getReceiver transmitter))
   Releaseable
   (release [this]
-    (.close this)
+    (close! this)
     true))
 
 (defmethod connect! [Transmitter Receiver]
@@ -490,17 +528,42 @@
 
 ;; ============================= Sequencer ================================
 
+(deftype MetaEventListenerFunction [f]
+  MetaEventListener
+  (meta [this message]
+    (f this message)))
+
+(defn meta-listener [f]
+  (->MetaEventListenerFunction f))
+
+(deftype ControllerEventListenerFunction [f]
+  ControllerEventListener
+  (controlChange [this message]
+    (f this message)))
+
+(defn controller-listener [f]
+  (->ControllerEventListenerFunction f))
+
 (extend-type Sequencer
   Broadcast
-  (listen! [sequencer! listener]
-    (.addMetaEventListener sequencer! listener))
-  (listen! [sequencer! listener controllers]
-    (.addControllerEventListener sequencer! listener controllers))
-  (ignore! [sequencer! listener]
-    (.removeMetaEventListener sequencer! listener)
-    sequencer!)
-  (ignore! [sequencer! listener controllers]
-    (.removeControllerEventListener sequencer! listener controllers))
+  (listen!
+    ([sequencer! listener]
+     (.addMetaEventListener sequencer!
+                            (if (instance? MetaEventListener listener)
+                              listener
+                              (->MetaEventListenerFunction listener))))
+    ([sequencer! listener controllers]
+     (.addControllerEventListener sequencer!
+                                  (if (instance? ControllerEventListener listener)
+                                    listener
+                                    (->ControllerEventListenerFunction listener))
+                                  controllers)))
+  (ignore!
+    ([sequencer! listener]
+     (.removeMetaEventListener sequencer! listener)
+     sequencer!)
+    ( [sequencer! listener controllers]
+     (.removeControllerEventListener sequencer! listener controllers)))
   Timing
   (micro-length [sequencer]
     (.getMicrosecondLength sequencer))
@@ -530,9 +593,13 @@
   (set-sequence [s sequencer!]
     (.setSequence ^Sequencer sequencer! s)))
 
-(defn sequence! [sequencer! source]
-  (set-sequence source sequencer!)
-  sequencer!)
+(defn sequence!
+  ([^Sequencer sequencer!]
+   (.setSequence sequencer! (.getSequence sequencer!))
+   sequencer!)
+  ([sequencer! source]
+   (set-sequence source sequencer!)
+   sequencer!))
 
 (defn loop-count ^long [^Sequencer sequencer]
   (.getLoopCount sequencer))
@@ -732,7 +799,8 @@
 (extend-type MetaMessage
   Type
   (mytype [message]
-    (.getType message))
+    (let [mt (.getType message)]
+      (get meta-message-type-key mt mt)))
   Data
   (data [message]
     (.getData message))
@@ -795,8 +863,8 @@
   ([division ^long resolution ^long num-tracks]
    (Sequence. (get timing-type division division) resolution num-tracks)))
 
-(defn track [^Sequence sequence]
-  (.createTrack sequence))
+(defn track! [^Sequence sequence!]
+  (.createTrack sequence!))
 
 (defn tracks [^Sequence sequence]
   (.getTracks sequence))
@@ -811,15 +879,16 @@
 
 (extend-type ShortMessage
   Data
-  (message! [sm! status]
-    (.setMessage sm! (get message-status status status))
-    sm!)
-  (message! [sm! status data1 data2]
-    (.setMessage sm! (get message-status status status) data1 data2)
-    sm!)
-  (message! [sm! command channel data1 data2]
-    (.setMessage sm! (get message-status command command) channel data1 data2)
-    sm!))
+  (message!
+    ([sm! status]
+     (.setMessage sm! (get message-status status status))
+     sm!)
+    ([sm! status data1 data2]
+     (.setMessage sm! (get message-status status status) data1 data2)
+     sm!)
+    ([sm! command channel data1 data2]
+     (.setMessage sm! (get message-status command command) channel data1 data2)
+              sm!)))
 
 (defn short-message
   ([]
@@ -849,12 +918,13 @@
   Data
   (data [message]
     (.getData message))
-  (message! [sm! data length]
-    (.setMessage sm! data length)
-    sm!)
-  (message! [sm! status data length]
-    (.setMessage sm! (get message-status status status) data length)
-    sm!))
+  (message!
+    ([sm! data length]
+     (.setMessage sm! data length)
+     sm!)
+    ([sm! status data length]
+     (.setMessage sm! (get message-status status status) data length)
+     sm!)))
 
 (defn sysex-message
   ([]
@@ -883,7 +953,7 @@
 (defn event-count ^long [^Track track]
   (.size track))
 
-;; =================== Track ==========================================
+;; =================== VoiceStatus ==========================================
 
 (extend-type VoiceStatus
   Activity
@@ -980,6 +1050,13 @@
   (.write w (pr-str (-> (bean message)
                         (update :class simple-name)
                         (update :status message-status-key)))))
+
+(defmethod print-method MetaMessage
+  [message ^java.io.Writer w]
+  (.write w (pr-str (-> (bean message)
+                        (update :class simple-name)
+                        (update :status message-status-key)
+                        (update :type meta-message-type-key)))))
 
 (defmethod print-method Patch
   [message ^java.io.Writer w]

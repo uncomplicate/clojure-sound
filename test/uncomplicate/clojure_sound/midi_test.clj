@@ -102,8 +102,25 @@
              (count (transmitters (close! input))) => 0
              (count (receivers synth)) => 2
              (count (receivers (close! synth))) => 0
+             (count (receivers sq)) => 1
              (count (receivers (close! sq))) => 0)
            (finally
              (close! input) => input
              (close! sq) => sq
              (close! synth) => synth))))
+
+(facts "Using Sequencer."
+       (let [sqcr (sequencer)
+             synth (synthesizer)
+             maple (sequence (clojure.java.io/resource "maple.mid"))]
+         ;;(connect! sqcr synth)
+         (open! sqcr) => sqcr
+         ;;(open! synth) => synth
+         (sequence! sqcr maple) => sqcr
+         (listen! sqcr #((when (= (mytype %2) :end-of-track)
+                           (Thread/sleep 200)
+                           (stop! sqcr)
+                           (close! synth)
+                           (close! sqcr))))
+         (start! sqcr)
+         (running? sqcr) => true))
