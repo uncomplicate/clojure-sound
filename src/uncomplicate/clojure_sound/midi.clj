@@ -580,14 +580,16 @@
                             (if (instance? MetaEventListener listener)
                               listener
                               (meta-listener listener))))
-    ([sequencer! listener controllers]
-     (.addControllerEventListener sequencer!
-                                  (if (instance? ControllerEventListener listener)
-                                    listener
-                                    (->ControllerEventListenerFunction listener))
-                                  (if (sequential? controllers)
-                                    (int-array controllers)
-                                    controllers))))
+    ([sequencer! listener selection]
+     (if (or (number? selection) (keyword? selection))
+       (.addMetaEventListener sequencer! (meta-listener selection listener))
+       (.addControllerEventListener sequencer!
+                                    (if (instance? ControllerEventListener listener)
+                                      listener
+                                      (->ControllerEventListenerFunction listener))
+                                    (if (sequential? selection)
+                                      (int-array selection)
+                                      selection)))))
   (ignore!
     ([sequencer! listener]
      (.removeMetaEventListener sequencer! listener)
