@@ -8,13 +8,13 @@
 
 (ns uncomplicate.clojure-sound.midi
   (:refer-clojure :exclude [sequence])
-  (:require [uncomplicate.commons.core :refer [Releaseable Closeable close!]]
+  (:require [uncomplicate.commons.core :refer [Releaseable Closeable close!] :as commons]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support SequenceSource set-sequence get-sequence
                                Load load-instruments unload-instruments simple-name key-name
                                ReceiverProvider get-receiver]]
              [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
-                           Format active? InfoProvider connect!]]])
+                           Format active? InfoProvider connect! division resolution mytype]]])
   (:import [clojure.lang ILookup IFn]
            java.lang.reflect.Field
            java.net.URL
@@ -162,7 +162,10 @@
     (MidiSystem/getSequence url))
   Sequencer
   (get-sequence [sequencer]
-    (.getSequence sequencer)))
+    (.getSequence sequencer))
+  Sequence
+  (get-sequence [sq]
+    (sequence (division sq) (resolution sq) (tracks sq))))
 
 (extend-protocol MidiSystemProcedures
   File
@@ -814,11 +817,6 @@
 
 ;; =================== MidiMessage =====================================================
 
-(extend-type MidiMessage
-  Event
-  (event [message tick]
-    (MidiEvent. message tick)))
-
 (defn message-bytes [^MidiMessage message]
   (.getMessage message))
 
@@ -829,9 +827,42 @@
   (let [s (.getStatus message)]
     (get message-status-key s s)))
 
+(extend-type MidiMessage
+  commons/Info
+  (commons/info
+    ([message]
+     {:status (message-status-key (status message))
+      :length (message-length message)
+      :bytes (message-bytes message)})
+    ([message info-type]
+     (case info-type
+       :status (message-status-key (status message))
+       :length (message-length message)
+       :bytes (message-bytes message)
+       nil)))
+  Event
+  (event [message tick]
+    (MidiEvent. message tick)))
+
 ;; =================== MetaMessage =====================================================
 
 (extend-type MetaMessage
+  commons/Info
+  (commons/info
+    ([message]
+     {:status (message-status-key (status message))
+      :length (message-length message)
+      :bytes (message-bytes message)
+      :type (mytype message)
+      :data (data message)})
+    ([message info-type]
+     (case info-type
+       :status (message-status-key (status message))
+       :length (message-length message)
+       :bytes (message-bytes message)
+       :type (mytype message)
+       :data (data message)
+       nil)))
   Type
   (mytype [message]
     (let [mt (.getType message)]
@@ -878,6 +909,17 @@
 
 ;; =================== Sequence ========================================================
 
+(defn tracks [^Sequence sequence]
+  (.getTracks sequence))
+
+(defn sequence
+  ([source]
+   (get-sequence source))
+  ([division ^long resolution]
+   (Sequence. (get timing-type division division) resolution))
+  ([division ^long resolution ^long num-tracks]
+   (Sequence. (get timing-type division division) resolution num-tracks)))
+
 (extend-type Sequence
   Timing
   (micro-length [s]
@@ -890,19 +932,8 @@
   (ticks [s]
     (.getTickLength s)))
 
-(defn sequence
-  ([source]
-   (get-sequence source))
-  ([division ^long resolution]
-   (Sequence. (get timing-type division division) resolution))
-  ([division ^long resolution ^long num-tracks]
-   (Sequence. (get timing-type division division) resolution num-tracks)))
-
 (defn track! [^Sequence sequence!]
   (.createTrack sequence!))
-
-(defn tracks [^Sequence sequence]
-  (.getTracks sequence))
 
 (defn delete! [^Sequence sequence! track]
   (.deleteTrack sequence! track))
@@ -912,7 +943,39 @@
 
 ;; =================== ShortMessage =====================================================
 
+(defn channel [^ShortMessage message]
+  (.getChannel message))
+
+(defn command [^ShortMessage message]
+  (.getCommand message))
+
+(defn data1 ^long [^ShortMessage message]
+  (.getData1 message))
+
+(defn data2 ^long [^ShortMessage message]
+  (.getData2 message))
+
 (extend-type ShortMessage
+  commons/Info
+  (commons/info
+    ([message]
+     {:status (message-status-key (status message))
+      :length (message-length message)
+      :bytes (message-bytes message)
+      :channel (channel message)
+      :command (command message)
+      :data1 (data1 message)
+      :data2 (data2 message)})
+    ([message info-type]
+     (case info-type
+       :status (message-status-key (status message))
+       :length (message-length message)
+       :bytes (message-bytes message)
+       :channel (channel message)
+       :command (command message)
+       :data1 (data1 message)
+       :data2 (data2 message)
+       nil)))
   Data
   (message!
     ([sm! status]
@@ -935,17 +998,6 @@
   ([command channel data1 data2]
    (ShortMessage. command channel data1 data2)))
 
-(defn channel [^ShortMessage message]
-  (.getChannel message))
-
-(defn command [^ShortMessage message]
-  (.getCommand message))
-
-(defn data1 ^long [^ShortMessage message]
-  (.getData1 message))
-
-(defn data2 ^long [^ShortMessage message]
-  (.getData2 message))
 
 ;; =================== SysexMessage =====================================================
 
@@ -1082,16 +1134,7 @@
 
 (defmethod print-method MidiMessage
   [message ^java.io.Writer w]
-  (.write w (pr-str (-> (bean message)
-                        (update :class simple-name)
-                        (update :status message-status-key)))))
-
-(defmethod print-method MetaMessage
-  [message ^java.io.Writer w]
-  (.write w (pr-str (-> (bean message)
-                        (update :class simple-name)
-                        (update :status message-status-key)
-                        (update :type meta-message-type-key)))))
+  (.write w (pr-str (assoc (commons/info message) :class (simple-name (class message))))))
 
 (defmethod print-method Patch
   [message ^java.io.Writer w]
