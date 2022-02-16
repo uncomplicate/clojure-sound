@@ -378,7 +378,7 @@
 
 (defn mono!
   ([^MidiChannel channel!]
-   (.setMono channel! true)
+   (.setMono channel! (not (.getMono channel!)))
    channel!)
   ([^MidiChannel channel! on]
    (.setMono channel! on)
@@ -392,11 +392,13 @@
 
 (defn mute!
   ([^MidiChannel channel!]
-   (.setMute channel! true)
+   (.setMute channel! (not (.getMute channel!)))
    channel!)
-  ([^MidiChannel channel! mute]
-   (.setMute channel! mute)
-   channel!)
+  ([this! arg]
+   (if (instance? MidiChannel this!)
+     (.setMute ^MidiChannel this! arg)
+     (.setTrackMute ^Sequencer this! arg (not (.getTrackMute ^Sequencer this! arg))))
+   this!)
   ([^Sequencer sequencer! track mute]
    (.setTrackMute sequencer! track mute)
    sequencer!))
@@ -406,7 +408,7 @@
 
 (defn omni!
   ([^MidiChannel channel!]
-   (.setOmni channel! true)
+   (.setOmni channel! (not (.getOmni channel!)))
    channel!)
   ([^MidiChannel channel! on]
    (.setOmni channel! on)
@@ -415,9 +417,13 @@
 (defn bend ^long [^MidiChannel channel]
   (.getPitchBend channel))
 
-(defn bend! [^MidiChannel channel! bend]
-  (.setPitchBend channel! bend)
-  channel!)
+(defn bend!
+  ([^MidiChannel channel!]
+   (.setPitchBend channel! (not (.getPitchBend channel!)))
+   channel!)
+  ([^MidiChannel channel! bend]
+   (.setPitchBend channel! bend)
+   channel!))
 
 (defn solo
   ([^MidiChannel channel]
@@ -427,11 +433,13 @@
 
 (defn solo!
   ([^MidiChannel channel!]
-   (.setSolo channel! true)
+   (.setSolo channel! (not (.getSolo channel!)))
    channel!)
-  ([^MidiChannel channel! on]
-   (.setSolo channel! on)
-   channel!)
+  ([this! arg]
+   (if (instance? MidiChannel this!)
+     (.setSolo ^MidiChannel this! arg)
+     (.setTrackSolo ^Sequencer this! arg (not (.getTrackSolo ^Sequencer this! arg))))
+   this!)
   ([^Sequencer sequencer! track solo]
    (.setTrackSolo sequencer! track solo)
    sequencer!))
@@ -544,20 +552,24 @@
 
 ;; ============================= Sequencer ================================
 
-(deftype MetaEventListenerFunction [f]
+(deftype MetaEventListenerFunction [f ^int meta-type]
   MetaEventListener
-  (meta [this message]
-    (f this message)))
+  (meta [_ message]
+    (when (or (< meta-type 0) (= meta-type (.getType message)))
+      (f message))))
 
-(defn meta-listener [f]
-  (->MetaEventListenerFunction f))
+(defn meta-listener
+  ([meta-type f]
+   (->MetaEventListenerFunction f (get meta-message-type meta-type meta-type)))
+  ([f]
+   (meta-listener f -1)))
 
 (deftype ControllerEventListenerFunction [f]
   ControllerEventListener
-  (controlChange [this message]
-    (f this message)))
+  (controlChange [_ message]
+    (f message)))
 
-(defn controller-listener [f]
+(defn ctrl-listener [f]
   (->ControllerEventListenerFunction f))
 
 (extend-type Sequencer
@@ -567,19 +579,24 @@
      (.addMetaEventListener sequencer!
                             (if (instance? MetaEventListener listener)
                               listener
-                              (->MetaEventListenerFunction listener))))
+                              (meta-listener listener))))
     ([sequencer! listener controllers]
      (.addControllerEventListener sequencer!
                                   (if (instance? ControllerEventListener listener)
                                     listener
                                     (->ControllerEventListenerFunction listener))
-                                  controllers)))
+                                  (if (sequential? controllers)
+                                    (int-array controllers)
+                                    controllers))))
   (ignore!
     ([sequencer! listener]
      (.removeMetaEventListener sequencer! listener)
      sequencer!)
-    ( [sequencer! listener controllers]
-     (.removeControllerEventListener sequencer! listener controllers)))
+    ([sequencer! listener controllers]
+     (.removeControllerEventListener sequencer! listener
+                                     (if (sequential? controllers)
+                                       (int-array controllers)
+                                       controllers))))
   Timing
   (micro-length [sequencer]
     (.getMicrosecondLength sequencer))
@@ -966,7 +983,7 @@
 (defn remove! [^Track track! event]
   (.remove track! event))
 
-(defn event-count ^long [^Track track]
+(defn events ^long [^Track track]
   (.size track))
 
 ;; =================== VoiceStatus ==========================================

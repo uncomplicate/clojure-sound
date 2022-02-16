@@ -117,13 +117,61 @@
            (myname (device (receiver (first (transmitters (sequencer)))))) => "Gervill"
            (open! sqcr) => sqcr
            (sequence! sqcr maple) => sqcr
-           (listen! sqcr #((when (= (mytype %2) :end-of-track)
-                             (stop! sqcr)
-                             (close! sqcr) ;; Auto-close
-                             (deliver cleanup :confirmed))))
+           (listen! sqcr (meta-listener :end-of-track
+                                        #((stop! sqcr)
+                                          (close! sqcr) ;; Auto-close
+                                          (deliver cleanup :confirmed))))
            (start! sqcr)
            (running? sqcr) => true
            (deref cleanup) => :confirmed
            (finally ;; So I can interrupt the music while testing...
+             (Thread/sleep 1000)
              (stop! sqcr)
              (close! sqcr)))))
+
+(let [sqcr (sequencer)
+      maple (sequence (clojure.java.io/resource "maple.mid"))
+      maple2 (sequence :ppq (resolution maple))
+      finished? (promise)]
+  (try
+    (facts "Editing a Sequence."
+           (open! sqcr) => sqcr
+           (let [t2 (track! maple2)
+                 t1 (first (tracks maple))]
+             (String. ^bytes (data (message (event t1 0)))) => "control track"
+             (events t1) => 6
+             (take 3 (map #(String. ^bytes (data (message (event t1 %1)))) (range (events t1))))
+             => ["control track" "creator: " "GNU LilyPond 2.14.2           "]
+             (delete! maple2 t2) => true)
+           (map events (tracks maple)) => [6 2391 2751]
+           (map ticks (tracks maple)) => [0 110592 110592]
+           (doseq [t (tracks maple)]
+             (let [t2 (track! maple2)]
+               (dotimes [i (events t)]
+                 (add! t2 (event t i)))))
+           (map ticks (tracks maple2)) => [0 110592 110592]
+           (sequence! sqcr maple2) => sqcr)
+    (facts "Using advanced Sequencer features."
+           (tick-position sqcr) => 0
+           (micro-position sqcr) => 0
+           (tick-position! sqcr 110092) => sqcr
+           (micro-position sqcr) => 143348958
+           (tempo-factor sqcr) => 1.0
+           (tempo-factor! sqcr 3.0) => sqcr
+           (tempo-bpm sqcr) => 120.0
+           (tempo-mpq sqcr) => 500000.0
+           (tempo-bpm! sqcr 360) => sqcr
+           (tempo-mpq sqcr) => 166666.671875
+           (mute sqcr 1) => false
+           (solo sqcr 1) => false
+           (mute! sqcr 1) => sqcr
+           (listen! sqcr (meta-listener :end-of-track #(deliver finished? :yes)))
+           (start! sqcr)
+           (deref finished?) => :yes
+           (tick-position sqcr) => 110592
+           (micro-position! sqcr 0) => sqcr
+           (tick-position sqcr) => 0)
+    (finally
+      (Thread/sleep 1000)
+      (stop! sqcr)
+      (close! sqcr))))
