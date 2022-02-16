@@ -15,7 +15,7 @@
                                ReceiverProvider get-receiver]]
              [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
                            Format active? InfoProvider connect!]]])
-  (:import clojure.lang.ILookup
+  (:import [clojure.lang ILookup IFn]
            java.lang.reflect.Field
            java.net.URL
            [java.io File InputStream OutputStream]
@@ -282,6 +282,12 @@
 (defn ^long max-transmitters [^MidiDevice device]
   (.getMaxTransmitters device))
 
+(defn receiver? [device]
+  (not= 0 (max-receivers device)))
+
+(defn transmitter? [device]
+  (not= 0 (max-transmitters device)))
+
 (defn receivers [^MidiDevice device]
   (.getReceivers device))
 
@@ -452,6 +458,16 @@
   (release [this]
     (close! this)
     true))
+
+(deftype ReceiverFunction [f]
+  Receiver
+  (send [_ message timestamp]
+    (f message timestamp)))
+
+(extend-type IFn
+  ReceiverProvider
+  (get-receiver [f]
+    (->ReceiverFunction f)))
 
 (defn send!
   ([^Receiver receiver! ^MidiMessage message ^long timestamp]
