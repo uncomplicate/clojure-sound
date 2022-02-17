@@ -19,6 +19,7 @@
   (:import [clojure.lang ILookup IFn]
            java.lang.reflect.Field
            java.net.URL
+           java.util.Arrays
            [java.io File InputStream OutputStream]
            [java.nio ByteBuffer ByteOrder]
            [javax.sound.midi MidiSystem MidiDevice MidiDevice$Info MidiFileFormat MidiChannel
@@ -35,7 +36,7 @@
 
 (defprotocol Data
   (data [this])
-  (message! [message status] [message arg1 arg2 arg3] [message command channel data1 data2]))
+  (message! [message arg] [message arg1 arg2 arg3] [message command channel data1 data2]))
 
 (defprotocol Tick
   (ticks [this]))
@@ -69,11 +70,11 @@
    Sequence/SMPTE_30 :smpte30
    Sequence/SMPTE_30DROP :smpte30drop})
 
-(def message-status
+(def command-type
   {:active-sensing ShortMessage/ACTIVE_SENSING
    :channel-pressure ShortMessage/CHANNEL_PRESSURE
    :continue ShortMessage/CONTINUE
-   :control-change ShortMessage/CONTROL_CHANGE
+   :cc ShortMessage/CONTROL_CHANGE
    :exclusive-end ShortMessage/END_OF_EXCLUSIVE
    :time ShortMessage/MIDI_TIME_CODE
    :off ShortMessage/NOTE_OFF
@@ -91,11 +92,11 @@
    :special-system-exclusive SysexMessage/SPECIAL_SYSTEM_EXCLUSIVE
    :system-exclusive SysexMessage/SYSTEM_EXCLUSIVE})
 
-(def message-status-key
+(def command-type-key
   {ShortMessage/ACTIVE_SENSING :active-sensing
    ShortMessage/CHANNEL_PRESSURE :channel-pressure
    ShortMessage/CONTINUE :continue
-   ShortMessage/CONTROL_CHANGE :control-change
+   ShortMessage/CONTROL_CHANGE :cc
    ShortMessage/END_OF_EXCLUSIVE :exclusive-end
    ShortMessage/MIDI_TIME_CODE :time
    ShortMessage/NOTE_OFF :off
@@ -830,21 +831,18 @@
   (.getLength message))
 
 (defn status [^MidiMessage message]
-  (let [s (.getStatus message)]
-    (get message-status-key s s)))
+  (.getStatus message))
 
 (extend-type MidiMessage
   commons/Info
   (commons/info
     ([message]
-     {:status (let [st (status message)]
-                (get message-status-key st st))
+     {:status (status message)
       :length (message-length message)
       :bytes (message-bytes message)})
     ([message info-type]
      (case info-type
-       :status (let [st (status message)]
-                 (get message-status-key st st))
+       :status (status message)
        :length (message-length message)
        :bytes (message-bytes message)
        nil)))
@@ -886,18 +884,23 @@
            :unknown)
    :key (aget data 0)})
 
+(defn decode-vendor-specific [^bytes data]
+  (or (< 0 (alength data))
+      (if (= 0 (aget data 0))
+        {:vendor-id (decode-integer (Arrays/copyOfRange data 0 3))
+         :data (Arrays/copyOfRange data 3 (alength data))}
+        {:vendor-id (aget data 0)
+         :data (Arrays/copyOfRange data 1 (alength data))})))
+
 (extend-type MetaMessage
   commons/Info
   (commons/info
     ([message]
-     {:status (let [st (status message)]
-                (get message-status-key st st))
-      :type (itype message)
+     {:type (itype message)
       :data (decode message)})
     ([message info-type]
      (case info-type
-       :status (let [st (status message)]
-                 (get message-status-key st st))
+       :status (status message)
        :length (message-length message)
        :bytes (message-bytes message)
        :type (itype message)
@@ -910,7 +913,10 @@
   Data
   (data [message]
     (.getData message))
-  (message!! [mm! type data length]
+  (message! [mm! type data]
+    (.setMessage mm! type data (alength data))
+    mm!)
+  (message! [mm! type data length]
     (.setMessage mm! type data length)
     mm!)
   Code
@@ -932,6 +938,7 @@
         0x58 (decode-time-signature data)
         0x59 (decode-key-signature data)
         0x7F data
+        0xFF (decode-vendor-specific data)
         data))))
 
 (defn meta-message
@@ -1015,63 +1022,107 @@
 (defn data2 ^long [^ShortMessage message]
   (.getData2 message))
 
+(defn short-little-endian
+  (^long [^long data1 ^long data2]
+   (+ (* 128 data2) data1))
+  (^long [^bytes data]
+   (+ (* 128 (aget data 1)) (aget data 0))))
+
 (extend-type ShortMessage
   commons/Info
   (commons/info
     ([message]
-     {:status (let [st (status message)]
-                (get message-status-key st st))
-      :channel (channel message)
-      :command (command message)
-      :data1 (data1 message)
-      :data2 (data2 message)})
+     {:channel (channel message)
+      :command (get command-type-key (command message))
+      :data (decode message)})
     ([message info-type]
      (case info-type
-       :status (let [st (status message)]
-                 (get message-status-key st st))
+       :status (status message)
        :length (message-length message)
        :bytes (message-bytes message)
        :channel (channel message)
-       :command (command message)
+       :command (get command-type-key (command message))
        :data1 (data1 message)
        :data2 (data2 message)
+       :data (decode message)
        nil)))
   Data
   (message!
     ([sm! status]
-     (.setMessage sm! (get message-status status status))
+     (.setMessage sm! (get command-type status status))
+     sm!)
+    ([sm! status data]
+     (.setMessage sm! (get command-type status status) (aget ^bytes data 0) (aget ^bytes data 1))
      sm!)
     ([sm! status data1 data2]
-     (.setMessage sm! (get message-status status status) data1 data2)
+     (.setMessage sm! (get command-type status status) data1 data2)
      sm!)
     ([sm! command channel data1 data2]
-     (.setMessage sm! (get message-status command command) channel data1 data2)
-              sm!)))
+     (.setMessage sm! (get command-type command command) channel data1 data2)
+     sm!))
+  Code
+  (decode [message]
+    (case (.getCommand message)
+      128 {:key (data1 message) :velocity (data2 message)}
+      144 {:key (data1 message) :velocity (data2 message)}
+      160 {:key (data1 message) :velocity (data2 message)}
+      176 {:controller (data1 message) :value (data2 message)}
+      192 data1
+      208 data1
+      224 (short-little-endian data1 data2)
+      241 :time
+      242 (short-little-endian data1 data2)
+      243 data1
+      246 :tune
+      247 :exclusive-end
+      251 :continue
+      250 :start
+      248 :clock
+      252 :stop
+      255 :reset
+      254 :active-sensing
+      nil)))
 
 (defn short-message
   ([]
    (ShortMessage.))
   ([status]
-   (ShortMessage. (get message-status status status)))
+   (ShortMessage. (get command-type status status)))
   ([status data1 data2]
-   (ShortMessage. (get message-status status status) data1 data2))
+   (ShortMessage. (get command-type status status) data1 data2))
   ([command channel data1 data2]
-   (ShortMessage. command channel data1 data2)))
-
+   (ShortMessage. (get command-type command command) channel data1 data2)))
 
 ;; =================== SysexMessage =====================================================
 
 (extend-type SysexMessage
+  commons/Info
+  (commons/info
+    ([message]
+     (decode message))
+    ([message info-type]
+     (case info-type
+       :status (status message)
+       :length (message-length message)
+       :bytes (message-bytes message)
+       ((decode message) info-type))))
   Data
   (data [message]
     (.getData message))
   (message!
-    ([sm! data length]
-     (.setMessage sm! data length)
+    ([sm! data]
+     (.setMessage sm! data (alength ^bytes data))
+     sm!)
+    ([sm! arg1 arg2]
+     (if (integer? arg2)
+       (.setMessage sm! arg1 arg2)
+       (message! sm! arg1 arg2 (alength ^bytes arg2)))
      sm!)
     ([sm! status data length]
-     (.setMessage sm! (get message-status status status) data length)
-     sm!)))
+     (.setMessage sm! (get command-type status status) data length)
+     sm!))
+  (decode [message]
+    (decode-vendor-specific (.getData message))))
 
 (defn sysex-message
   ([]
@@ -1079,7 +1130,7 @@
   ([data length]
    (SysexMessage. data length))
   ([status data length]
-   (SysexMessage. (get message-status status status) data length)))
+   (SysexMessage. (get command-type status status) data length)))
 
 ;; =================== Track ==========================================
 
@@ -1194,7 +1245,7 @@
 
 (defmethod print-method MidiMessage
   [message ^java.io.Writer w]
-  (.write w (pr-str (assoc (commons/info message) :class (simple-name (class message))))))
+  (.write w (pr-str (commons/info message))))
 
 (defmethod print-method MetaMessage
   [message ^java.io.Writer w]
