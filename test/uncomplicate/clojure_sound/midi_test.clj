@@ -119,9 +119,9 @@
            (sequence! sqcr maple) => sqcr
            (listen! sqcr (meta-listener :end-of-track
                                         (fn [_]
-                                          ((stop! sqcr)
-                                           (close! sqcr) ;; Auto-close
-                                           (deliver cleanup :confirmed)))))
+                                          (stop! sqcr)
+                                          (close! sqcr) ;; Auto-close
+                                          (deliver cleanup :confirmed))))
            (start! sqcr)
            (running? sqcr) => true
            (deref cleanup) => :confirmed
@@ -130,7 +130,53 @@
              (stop! sqcr)
              (close! sqcr)))))
 
-
+#_(facts "Recording and saving sequences."
+         (let [player (sequencer)
+               maple (sequence (clojure.java.io/resource "maple.mid"))
+               synth (synthesizer)
+               recorder (sequencer)
+               copy (sequence :ppq (resolution maple) (tracks maple))]
+           (try
+             (sequence! player maple) => player
+             (sequence! recorder copy) => recorder
+             (dotimes [i (tracks recorder)]
+               (rec! recorder  i))
+             (open! recorder) => recorder
+             (open! player) => player
+             (connect! player recorder)
+             (rec! recorder) => recorder
+             (recording? recorder) => true
+             (start! player) => player
+             (Thread/sleep 2000)
+             (dotimes [i 16]
+               (mute! player i true))
+             (stop! recorder)
+             (stop-rec! recorder) => recorder
+             (doseq [t (tracks copy)]
+               (stop-rec! recorder t))
+             ;;(write! recorder (clojure.java.io/resource "maple-copy.mid") 0)
+             (stop! player) => player
+             (println "now")
+             (sequence! recorder)
+             (connect! recorder synth)
+             (open! synth) => synth
+             (open? recorder) => true
+             (println ">" (tick-position recorder))
+             (println (start-point recorder))
+             (println (end-point recorder))
+             (println (loop-count recorder))
+             (tick-position! recorder 0)
+             (start-point! recorder 0)
+             (end-point! recorder (ticks recorder))
+             (loop-count! recorder -1)
+             (println (map event-count (tracks copy)))
+             (start! recorder) => recorder
+             (running? recorder) => true
+             (Thread/sleep 2000)
+             (finally
+               (close! synth)
+               (close! player)
+               (close! recorder)))))
 
 (let [sqcr (sequencer)
       maple (sequence (clojure.java.io/resource "maple.mid"))
@@ -167,10 +213,12 @@
            (tempo-mpq sqcr) => 166666.671875
            (mute sqcr 1) => false
            (solo sqcr 1) => false
-           (mute! sqcr 1) => sqcr
-           (listen! sqcr (fn [_] (deliver finished? :yes)) :end-of-track )
+           (mute! sqcr 2) => sqcr
+           (tempo-factor! sqcr 1.0) => sqcr
+           (tempo-bpm! sqcr 120) => sqcr
+           (listen! sqcr (partial deliver finished?) :end-of-track)
            (start! sqcr)
-           (deref finished?) => :yes
+           (deref finished?) => truthy
            (tick-position sqcr) => 110592
            (micro-position! sqcr 0) => sqcr
            (tick-position sqcr) => 0)

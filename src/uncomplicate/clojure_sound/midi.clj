@@ -20,6 +20,7 @@
            java.lang.reflect.Field
            java.net.URL
            [java.io File InputStream OutputStream]
+           [java.nio ByteBuffer ByteOrder]
            [javax.sound.midi MidiSystem MidiDevice MidiDevice$Info MidiFileFormat MidiChannel
             Receiver MidiDeviceReceiver MidiDeviceTransmitter Sequencer Soundbank Synthesizer
             Transmitter ControllerEventListener MetaEventListener Instrument MetaMessage MidiEvent
@@ -41,6 +42,10 @@
 
 (defprotocol Event
   (event [this arg]))
+
+(defprotocol Code
+  (encode [this])
+  (decode [this]))
 
 ;; ===================== Keyword coding ================================================
 
@@ -849,6 +854,38 @@
 
 ;; =================== MetaMessage =====================================================
 
+(defn decode-integer [^bytes data]
+  (case (alength data)
+    1 (.get (ByteBuffer/wrap data) 0)
+    2 (.getShort (ByteBuffer/wrap data) 0)
+    3 (bit-or (bit-and (aget data 2) 0xFF)
+              (bit-shift-left (bit-and (aget data 1) 0xFF) 8)
+              (bit-shift-left (bit-and (aget data 0) 0xFF) 16))
+    4 (.getInt (ByteBuffer/wrap data) 0)
+    8 (.getLong (ByteBuffer/wrap data) 0)
+    (throw (ex-info "Not an integer data buffer." {:type :midi-error
+                                                   :length (alength data) :supported #{1 2 4 8}}))))
+
+(defn decode-smpte [^bytes data]
+  {:hours (aget data 0)
+   :minutes (aget data 1)
+   :seconds (aget data 2)
+   :frames (aget data 3)
+   :fractional-frames (aget data 4)})
+
+(defn decode-time-signature [^bytes data]
+  {:numerator (aget data 0)
+   :denumerator (Math/pow 2 (aget data 1))
+   :ticks-per-beat (aget data 2)
+   :notes-per-beat (aget data 3)})
+
+(defn decode-key-signature [^bytes data]
+  {:mode (case (aget data 1)
+           0 :major
+           1 :minor
+           :unknown)
+   :key (aget data 0)})
+
 (extend-type MetaMessage
   commons/Info
   (commons/info
@@ -856,9 +893,7 @@
      {:status (let [st (status message)]
                 (get message-status-key st st))
       :type (itype message)
-      :data (if (< (int (.getType message)) 0x08)
-              (trim (String. ^bytes (data message)))
-              (data message))})
+      :data (decode message)})
     ([message info-type]
      (case info-type
        :status (let [st (status message)]
@@ -866,9 +901,7 @@
        :length (message-length message)
        :bytes (message-bytes message)
        :type (itype message)
-       :data (if (< (int (.getType message)) 0x08)
-               (trim (String. ^bytes (data message)))
-               (data message))
+       :data (decode message)
        nil)))
   Type
   (itype [message]
@@ -879,7 +912,27 @@
     (.getData message))
   (message!! [mm! type data length]
     (.setMessage mm! type data length)
-    mm!))
+    mm!)
+  Code
+  (decode [message]
+    (let [data (.getData message)]
+      (case (.getType message)
+        0x00 (decode-integer data)
+        0x01 (String. data)
+        0x02 (String. data)
+        0x03 (String. data)
+        0x04 (String. data)
+        0x05 (String. data)
+        0x06 (String. data)
+        0x07 (String. data)
+        0x20 (aget data 0)
+        0x2F nil
+        0x51 (decode-integer data)
+        0x54 (decode-smpte data)
+        0x58 (decode-time-signature data)
+        0x59 (decode-key-signature data)
+        0x7F data
+        data))))
 
 (defn meta-message
   ([]
@@ -1140,6 +1193,10 @@
   (.write w (pr-str (update (bean event) :class simple-name))))
 
 (defmethod print-method MidiMessage
+  [message ^java.io.Writer w]
+  (.write w (pr-str (assoc (commons/info message) :class (simple-name (class message))))))
+
+(defmethod print-method MetaMessage
   [message ^java.io.Writer w]
   (.write w (pr-str (assoc (commons/info message) :class (simple-name (class message))))))
 
