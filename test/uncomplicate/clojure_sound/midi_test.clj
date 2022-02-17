@@ -7,18 +7,18 @@
   (:import [javax.sound.midi MidiUnavailableException]))
 
 (facts "Obtaining Default Devices."
-       (myname (sequencer)) => "Real Time Sequencer"
-       (myname (synthesizer)) => "Gervill"
+       (iname (sequencer)) => "Real Time Sequencer"
+       (iname (synthesizer)) => "Gervill"
        (close! (receiver)) => truthy
        (close! (transmitter)) => truthy
        (<= 2 (count (device-info))) => true
        (< 0 (count (filter (comp sequencer? device) (device-info)))) => true
        (< 0 (count (filter (comp synthesizer? device) (device-info)))) => true)
 
-(let [gervill (first (filter (comp (partial = "Gervill") myname) (device-info)))]
+(let [gervill (first (filter (comp (partial = "Gervill") iname) (device-info)))]
   (facts "Test Gervill: Info."
          (description gervill) => "Software MIDI Synthesizer"
-         (myname gervill) => "Gervill"
+         (iname gervill) => "Gervill"
          (vendor gervill) => "OpenJDK"
          (<= 1.0 (Double/parseDouble (version gervill))) => true)
 
@@ -114,13 +114,14 @@
              maple (sequence (clojure.java.io/resource "maple.mid"))
              cleanup (promise)]
          (try
-           (myname (device (receiver (first (transmitters (sequencer)))))) => "Gervill"
+           (iname (device (receiver (first (transmitters (sequencer)))))) => "Gervill"
            (open! sqcr) => sqcr
            (sequence! sqcr maple) => sqcr
            (listen! sqcr (meta-listener :end-of-track
-                                        #((stop! sqcr)
-                                          (close! sqcr) ;; Auto-close
-                                          (deliver cleanup :confirmed))))
+                                        (fn [_]
+                                          ((stop! sqcr)
+                                           (close! sqcr) ;; Auto-close
+                                           (deliver cleanup :confirmed)))))
            (start! sqcr)
            (running? sqcr) => true
            (deref cleanup) => :confirmed
@@ -128,6 +129,8 @@
              (Thread/sleep 1000)
              (stop! sqcr)
              (close! sqcr)))))
+
+
 
 (let [sqcr (sequencer)
       maple (sequence (clojure.java.io/resource "maple.mid"))
@@ -165,7 +168,7 @@
            (mute sqcr 1) => false
            (solo sqcr 1) => false
            (mute! sqcr 1) => sqcr
-           (listen! sqcr (meta-listener :end-of-track #(deliver finished? :yes)))
+           (listen! sqcr (fn [_] (deliver finished? :yes)) :end-of-track )
            (start! sqcr)
            (deref finished?) => :yes
            (tick-position sqcr) => 110592

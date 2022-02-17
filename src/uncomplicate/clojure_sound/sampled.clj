@@ -405,7 +405,7 @@
 
 (extend-type Port$Info
   Info
-  (myname [info]
+  (iname [info]
     (.getName info)))
 
 (defn source? [^Port$Info port]
@@ -420,7 +420,7 @@
   Info
   (description [info]
     (.getDescription info))
-  (myname [info]
+  (iname [info]
     (.getName info))
   (vendor [info]
     (.getVendor info))
@@ -437,7 +437,7 @@
   Info
   (description [mixer]
     (.getDescription (.getMixerInfo mixer)))
-  (myname [mixer]
+  (iname [mixer]
     (.getName (.getMixerInfo mixer)))
   (vendor [mixer]
     (.getVendor (.getMixerInfo mixer)))
@@ -596,7 +596,7 @@
   (frame-length [aff]
     (.getFrameLength aff))
   Type
-  (mytype [aff]
+  (itype [aff]
     (.getType aff))
   Format
   (get-format [aff]
@@ -691,7 +691,7 @@
 
 (extend-type Control
   Type
-  (mytype [control]
+  (itype [control]
     (.getType control)))
 
 ;; =================== BooleanControl ==================================================
@@ -763,7 +763,7 @@
 
 (extend-type ReverbType
   Info
-  (myname [reverb]
+  (iname [reverb]
     (.getName reverb)))
 
 (defn decay-time ^long [^ReverbType reverb]

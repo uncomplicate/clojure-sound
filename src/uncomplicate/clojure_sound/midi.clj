@@ -8,13 +8,14 @@
 
 (ns uncomplicate.clojure-sound.midi
   (:refer-clojure :exclude [sequence])
-  (:require [uncomplicate.commons.core :refer [Releaseable Closeable close!] :as commons]
+  (:require [clojure.string :refer [trim]]
+   [uncomplicate.commons.core :refer [Releaseable Closeable close!] :as commons]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support SequenceSource set-sequence get-sequence
                                Load load-instruments unload-instruments simple-name key-name
                                ReceiverProvider get-receiver]]
              [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
-                           Format active? InfoProvider connect! division resolution mytype]]])
+                           Format active? InfoProvider connect! division resolution itype]]])
   (:import [clojure.lang ILookup IFn]
            java.lang.reflect.Field
            java.net.URL
@@ -272,7 +273,7 @@
   Info
   (description [info]
     (.getDescription info))
-  (myname [info]
+  (iname [info]
     (.getName info))
   (vendor [info]
     (.getVendor info))
@@ -311,7 +312,7 @@
   Info
   (description [device]
     (.getDescription (.getDeviceInfo device)))
-  (myname [device]
+  (iname [device]
     (.getName (.getDeviceInfo device)))
   (vendor [device]
     (.getVendor (.getDeviceInfo device)))
@@ -528,7 +529,7 @@
   Info
   (description [soundbank]
     (.getDescription soundbank))
-  (myname [soundbank]
+  (iname [soundbank]
     (.getName soundbank))
   (vendor [soundbank]
     (.getVendor soundbank))
@@ -767,7 +768,7 @@
 
 (extend-type SoundbankResource
   Info
-  (myname [this]
+  (iname [this]
     (.getName this))
   Data
   (data [resource]
@@ -804,7 +805,7 @@
   (byte-length [mff]
     (.getByteLength mff))
   Type
-  (mytype [mff]
+  (itype [mff]
     (.getType mff)))
 
 (defn midi-file-format
@@ -831,12 +832,14 @@
   commons/Info
   (commons/info
     ([message]
-     {:status (message-status-key (status message))
+     {:status (let [st (status message)]
+                (get message-status-key st st))
       :length (message-length message)
       :bytes (message-bytes message)})
     ([message info-type]
      (case info-type
-       :status (message-status-key (status message))
+       :status (let [st (status message)]
+                 (get message-status-key st st))
        :length (message-length message)
        :bytes (message-bytes message)
        nil)))
@@ -850,21 +853,25 @@
   commons/Info
   (commons/info
     ([message]
-     {:status (message-status-key (status message))
-      :length (message-length message)
-      :bytes (message-bytes message)
-      :type (mytype message)
-      :data (data message)})
+     {:status (let [st (status message)]
+                (get message-status-key st st))
+      :type (itype message)
+      :data (if (< (int (.getType message)) 0x08)
+              (trim (String. ^bytes (data message)))
+              (data message))})
     ([message info-type]
      (case info-type
-       :status (message-status-key (status message))
+       :status (let [st (status message)]
+                 (get message-status-key st st))
        :length (message-length message)
        :bytes (message-bytes message)
-       :type (mytype message)
-       :data (data message)
+       :type (itype message)
+       :data (if (< (int (.getType message)) 0x08)
+               (trim (String. ^bytes (data message)))
+               (data message))
        nil)))
   Type
-  (mytype [message]
+  (itype [message]
     (let [mt (.getType message)]
       (get meta-message-type-key mt mt)))
   Data
@@ -959,16 +966,16 @@
   commons/Info
   (commons/info
     ([message]
-     {:status (message-status-key (status message))
-      :length (message-length message)
-      :bytes (message-bytes message)
+     {:status (let [st (status message)]
+                (get message-status-key st st))
       :channel (channel message)
       :command (command message)
       :data1 (data1 message)
       :data2 (data2 message)})
     ([message info-type]
      (case info-type
-       :status (message-status-key (status message))
+       :status (let [st (status message)]
+                 (get message-status-key st st))
        :length (message-length message)
        :bytes (message-bytes message)
        :channel (channel message)

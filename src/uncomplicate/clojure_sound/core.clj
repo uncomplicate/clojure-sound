@@ -18,7 +18,7 @@
 
 (defprotocol Info
   (description [this])
-  (myname [this])
+  (iname [this])
   (vendor [this])
   (version [this]))
 
@@ -50,7 +50,7 @@
   (stop! [this]))
 
 (defprotocol Type
-  (mytype [this]))
+  (itype [this]))
 
 (defprotocol Format
   (get-format [this])
