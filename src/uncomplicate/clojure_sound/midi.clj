@@ -112,6 +112,80 @@
    ShortMessage/TIMING_CLOCK :clock
    ShortMessage/TUNE_REQUEST :tune})
 
+(def controller-type
+  {0 :bank
+   1 :modulation-wheel
+   2 :breath-control
+   4 :foot-control
+   5 :portamento-time
+   6 :data-entry
+   7 :volume
+   8 :balance
+   10 :pan
+   11 :expression-control
+   12 :effect-control-1
+   13 :effect-control-2
+   16 :gp-control-1
+   17 :gp-control-2
+   18 :gp-control-3
+   19 :gp-control-4
+   32 :bank
+   33 :modulation-wheel
+   34 :breath-control
+   36 :foot-control
+   37 :portamento-time
+   38 :data-entry
+   39 :volume
+   40 :balance
+   42 :pan
+   43 :expression-control
+   44 :effect-control-1
+   45 :effect-control-2
+   48 :gp-control-1
+   49 :gp-control-2
+   50 :gp-control-3
+   51 :gp-control-4
+   64 :sustain
+   65 :portamento
+   66 :sostenuto
+   67 :soft-pedal
+   68 :legato-footswitch
+   69 :hold-2
+   70 :sc-sound-variation
+   71 :sc-timbre
+   72 :sc-release-time
+   73 :sc-attack-time
+   74 :sc-brightness
+   75 :sc-6
+   76 :sc-7
+   77 :sc-8
+   78 :sc-9
+   79 :sc-10
+   80 :gp-control-5
+   81 :gp-control-6
+   82 :gp-control-7
+   83 :gp-control-8
+   84 :portamento-control
+   91 :effects-1-depth
+   92 :effects-2-depth
+   93 :effects-3-depth
+   94 :effects-4-depth
+   95 :effects-5-depth
+   96 :data-inc
+   97 :data-dec
+   98 :non-registered-param-number-lsb
+   99 :non-registered-param-number-msb
+   100 :registered-param-number-lsb
+   101 :registered-param-number-msb
+   120 :all-sound-off
+   121 :reset-all-controllers
+   122 :local-controll-on-off
+   123 :all-notes-off
+   124 :omni-off
+   125 :omni-on
+   126 :poly-on-off
+   127 :poly-on})
+
 (def sysex-status-key
   {SysexMessage/SPECIAL_SYSTEM_EXCLUSIVE :special-system-exclusive
    SysexMessage/SYSTEM_EXCLUSIVE :system-exclusive})
@@ -156,6 +230,8 @@
   (file-format [this])
   (soundbank [this])
   (device [this]))
+
+(declare sequence tracks)
 
 (extend-protocol SequenceSource
   File
@@ -380,8 +456,8 @@
   (.setChannelPressure channel! pressure)
   channel!)
 
-(defn controller ^long [^MidiChannel channel ^long controller]
-  (.getController channel controller))
+(defn controller ^long [^MidiChannel channel controller]
+  (.getController channel (get controller-type controller controller)))
 
 (defn mono [^MidiChannel channel]
   (.getMono channel))
@@ -457,8 +533,8 @@
 (defn control!
   ([^MidiChannel channel! on]
    (.localControl channel! on))
-  ([^MidiChannel channel! ^long controller ^long val]
-   (.controlChange channel! controller val)
+  ([^MidiChannel channel! controller ^long val]
+   (.controlChange channel! (get controller-type controller controller) val)
    channel!))
 
 (defn program!
@@ -607,7 +683,9 @@
     ([sequencer! listener controllers]
      (.removeControllerEventListener sequencer! listener
                                      (if (sequential? controllers)
-                                       (int-array controllers)
+                                       (int-array (map (fn [c]
+                                                         (get controller-type c c))
+                                                       controllers))
                                        controllers))))
   Timing
   (micro-length [sequencer]
@@ -1028,13 +1106,24 @@
   (^long [^bytes data]
    (+ (* 128 (aget data 1)) (aget data 0))))
 
+(defn decode-controller [^long controller ^long value]
+  (let [controller-type (controller-type controller)]
+    (merge {:controller controller
+            :value value}
+           (if controller-type
+             {:control controller-type}
+             nil))))
+
 (extend-type ShortMessage
   commons/Info
   (commons/info
     ([message]
-     {:channel (channel message)
-      :command (get command-type-key (command message))
-      :data (decode message)})
+     (let [decoded-data (decode message)]
+       (merge {:channel (channel message)
+               :command (get command-type-key (command message))}
+              (if (map? decoded-data)
+                decoded-data
+                {:data decoded-data}))))
     ([message info-type]
      (case info-type
        :status (status message)
@@ -1066,21 +1155,13 @@
       128 {:key (data1 message) :velocity (data2 message)}
       144 {:key (data1 message) :velocity (data2 message)}
       160 {:key (data1 message) :velocity (data2 message)}
-      176 {:controller (data1 message) :value (data2 message)}
+      176 (decode-controller (data1 message) (data2 message))
       192 data1
       208 data1
       224 (short-little-endian data1 data2)
-      241 :time
       242 (short-little-endian data1 data2)
       243 data1
       246 :tune
-      247 :exclusive-end
-      251 :continue
-      250 :start
-      248 :clock
-      252 :stop
-      255 :reset
-      254 :active-sensing
       nil)))
 
 (defn short-message
