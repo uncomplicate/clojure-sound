@@ -8,7 +8,7 @@
 
 (ns uncomplicate.clojure-sound.sampled
   (:require [clojure.walk :refer [stringify-keys]]
-            [uncomplicate.commons.core :refer [Releaseable close!] :as commons]
+            [uncomplicate.commons.core :refer [Releaseable close! Info info]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support simple-name]]
              [core :refer [write! SoundInfoProvider Open Timing Reset Broadcast Activity Type
@@ -193,15 +193,15 @@
   (->LineListenerFunction f))
 
 (extend-type Line
-  commons/Info
-  (commons/info
+  Info
+  (info
     ([this]
-     (assoc (commons/info (.getLineInfo this))
+     (assoc (info (.getLineInfo this))
             :status (if (.isOpen this) :open :closed)))
     ([this info-type]
      (case info-type
        :status (if (.isOpen this) :open :closed)
-       (commons/info (.getLineInfo this) info-type))))
+       (info (.getLineInfo this) info-type))))
   Releaseable
   (release [this]
     (close! this)
@@ -235,8 +235,8 @@
     (port-info kw)))
 
 (extend-type Line$Info
-  commons/Info
-  (commons/info
+  Info
+  (info
     ([this]
      {:line-class (simple-name (.getLineClass this))})
     ([this info-type]
@@ -421,8 +421,8 @@
 ;; =========================== Port ============================================
 
 (extend-type Port$Info
-  commons/Info
-  (commons/info
+  Info
+  (info
     ([this]
      {:line-class (.getLineClass this)
       :name (.getName this)})
@@ -438,8 +438,8 @@
 ;; =========================== Mixer ===========================================
 
 (extend-type Mixer$Info
-  commons/Info
-  (commons/info
+  Info
+  (info
     ([this]
      {:description (.getDescription this)
       :name (.getName this)
@@ -457,17 +457,17 @@
     info))
 
 (extend-type Mixer
-  commons/Info
-  (commons/info
+  Info
+  (info
     ([this]
      (merge {:class (simple-name (class this))
              :status (if (.isOpen this) :open :closed)}
-            (commons/info (.getMixerInfo this))))
+            (info (.getMixerInfo this))))
     ([this info-type]
      (case info-type
        :class (simple-name (class this))
        :status (if (.isOpen this) :open :closed)
-       (commons/info (.getMixerInfo this) info-type))))
+       (info (.getMixerInfo this) info-type))))
   Support
   (supported [this info]
     (.isLineSupported this (get port-info info info)))
@@ -808,8 +808,8 @@
   (.getLateReflectionIntensity reverb))
 
 (extend-type ReverbType
-  commons/Info
-  (commons/info
+  Info
+  (info
     ([this]
      {:name (.getName this)
       :decay-time (decay-time this)

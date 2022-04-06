@@ -11,7 +11,7 @@
   (:require [clojure
              [string :refer [trim]]
              [walk :refer [keywordize-keys]]]
-            [uncomplicate.commons.core :refer [Releaseable Closeable close!]]
+            [uncomplicate.commons.core :refer [Releaseable Closeable close! Info info]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support SequenceSource set-sequence get-sequence
                                Load load-instruments unload-instruments simple-name key-name
