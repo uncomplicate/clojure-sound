@@ -1,29 +1,29 @@
 (ns uncomplicate.clojure-sound.midi-test
   (:require [midje.sweet :refer [facts throws => =not=> roughly truthy]]
-            [uncomplicate.commons.core :refer [close!]]
+            [uncomplicate.commons.core :refer [close! info]]
             [uncomplicate.clojure-sound
              [core :refer :all]
              [midi :refer :all]])
   (:import [javax.sound.midi MidiUnavailableException]))
 
 (facts "Obtaining Default Devices."
-       (iname (sequencer)) => "Real Time Sequencer"
-       (iname (synthesizer)) => "Gervill"
+       (info (sequencer) :name) => "Real Time Sequencer"
+       (info (synthesizer) :name) => "Gervill"
        (close! (receiver)) => truthy
        (close! (transmitter)) => truthy
        (<= 2 (count (device-info))) => true
        (< 0 (count (filter (comp sequencer? device) (device-info)))) => true
        (< 0 (count (filter (comp synthesizer? device) (device-info)))) => true)
 
-(let [gervill (first (filter (comp (partial = "Gervill") iname) (device-info)))]
+(let [gervill (first (filter #(= "Gervill" (info % :name)) (device-info)))]
   (facts "Test Gervill: Info."
-         (description gervill) => "Software MIDI Synthesizer"
-         (iname gervill) => "Gervill"
-         (vendor gervill) => "OpenJDK"
-         (<= 1.0 (Double/parseDouble (version gervill))) => true)
+         (info gervill :description) => "Software MIDI Synthesizer"
+         (info gervill :name) => "Gervill"
+         (info gervill :vendor) => "OpenJDK"
+         (<= 1.0 (Double/parseDouble (info gervill :version))) => true)
 
   (facts "Test Gervill: InfoProvider."
-         (info gervill) => gervill)
+         (sound-info gervill) => gervill)
 
   (facts "Test Gervill: Opening Devices."
          (device gervill) => truthy
@@ -114,7 +114,7 @@
              maple (sequence (clojure.java.io/resource "maple.mid"))
              cleanup (promise)]
          (try
-           (iname (device (receiver (first (transmitters (sequencer)))))) => "Gervill"
+           (info (device (receiver (first (transmitters (sequencer))))) :name) => "Gervill"
            (open! sqcr) => sqcr
            (sequence! sqcr maple) => sqcr
            (listen! sqcr (meta-listener :end-of-track
@@ -226,3 +226,12 @@
       (Thread/sleep 1000)
       (stop! sqcr)
       (close! sqcr))))
+
+(facts "Managing instruments and soundbansk."
+       (let [synth (synthesizer)]
+         (try
+           (count (instruments synth)) => 0
+           (info (soundbank synth) :name) => "Emergency generated soundbank"
+           (finally
+
+             (close! synth) => synth))))

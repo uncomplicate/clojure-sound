@@ -8,10 +8,10 @@
 
 (ns uncomplicate.clojure-sound.sampled
   (:require [clojure.walk :refer [stringify-keys]]
-            [uncomplicate.commons.core :refer [Releaseable close!]]
+            [uncomplicate.commons.core :refer [Releaseable close!] :as commons]
             [uncomplicate.clojure-sound
-             [internal :refer [name-key Support]]
-             [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
+             [internal :refer [name-key Support simple-name]]
+             [core :refer [write! SoundInfoProvider Open Timing Reset Broadcast Activity Type
                            Format get-format]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
@@ -193,12 +193,21 @@
   (->LineListenerFunction f))
 
 (extend-type Line
+  commons/Info
+  (commons/info
+    ([this]
+     (assoc (commons/info (.getLineInfo this))
+            :status (if (.isOpen this) :open :closed)))
+    ([this info-type]
+     (case info-type
+       :status (if (.isOpen this) :open :closed)
+       (commons/info (.getLineInfo this) info-type))))
   Releaseable
   (release [this]
     (close! this)
     true)
-  InfoProvider
-  (info [line]
+  SoundInfoProvider
+  (sound-info [line]
     (.getLineInfo this))
   Open
   (open [line]
@@ -206,8 +215,8 @@
     line)
   (open? [line]
     (.isOpen line))
-  InfoProvider
-  (info [this]
+  SoundInfoProvider
+  (sound-info [this]
     (.getLineInfo this))
   Broadcast
   (listen! [line! listener]
@@ -221,13 +230,21 @@
     line!))
 
 (extend-type clojure.lang.Keyword
-  InfoProvider
-  (info [kw]
+  SoundInfoProvider
+  (sound-info [kw]
     (port-info kw)))
 
 (extend-type Line$Info
-  InfoProvider
-  (info [info]
+  commons/Info
+  (commons/info
+    ([this]
+     {:line-class (simple-name (.getLineClass this))})
+    ([this info-type]
+     (case info-type
+       :line-class (simple-name (.getLineClass this))
+       nil)))
+  SoundInfoProvider
+  (sound-info [info]
     info)
   Matches
   (matches? [this other]
@@ -404,9 +421,16 @@
 ;; =========================== Port ============================================
 
 (extend-type Port$Info
-  Info
-  (iname [info]
-    (.getName info)))
+  commons/Info
+  (commons/info
+    ([this]
+     {:line-class (.getLineClass this)
+      :name (.getName this)})
+    ([this info-type]
+     (case info-type
+       :line-class (.getLineClass this)
+       :name (.getName this)
+       nil))))
 
 (defn source? [^Port$Info port]
   (.isSource port))
@@ -414,35 +438,42 @@
 ;; =========================== Mixer ===========================================
 
 (extend-type Mixer$Info
-  InfoProvider
-  (info [info]
-    info)
-  Info
-  (description [info]
-    (.getDescription info))
-  (iname [info]
-    (.getName info))
-  (vendor [info]
-    (.getVendor info))
-  (version [info]
-    (.getVersion info)))
+  commons/Info
+  (commons/info
+    ([this]
+     {:description (.getDescription this)
+      :name (.getName this)
+      :vendor (.getVendor this)
+      :version (.getVersion this)})
+    ([this info-type]
+     (case info-type
+       :description (.getDescription this)
+       :name (.getName this)
+       :vendor (.getVendor this)
+       :version (.getVersion this)
+       nil)))
+  SoundInfoProvider
+  (sound-info [info]
+    info))
 
 (extend-type Mixer
+  commons/Info
+  (commons/info
+    ([this]
+     (merge {:class (simple-name (class this))
+             :status (if (.isOpen this) :open :closed)}
+            (commons/info (.getMixerInfo this))))
+    ([this info-type]
+     (case info-type
+       :class (simple-name (class this))
+       :status (if (.isOpen this) :open :closed)
+       (commons/info (.getMixerInfo this) info-type))))
   Support
   (supported [this info]
     (.isLineSupported this (get port-info info info)))
-  InfoProvider
-  (info [mixer]
-    (.getMixerInfo mixer))
-  Info
-  (description [mixer]
-    (.getDescription (.getMixerInfo mixer)))
-  (iname [mixer]
-    (.getName (.getMixerInfo mixer)))
-  (vendor [mixer]
-    (.getVendor (.getMixerInfo mixer)))
-  (version [mixer]
-    (.getVersion (.getMixerInfo mixer))))
+  SoundInfoProvider
+  (sount-info [mixer]
+    (.getMixerInfo mixer)))
 
 (defn mixer-info
   ([]
@@ -761,11 +792,6 @@
 
 ;; =================== ReverbType  =====================================================
 
-(extend-type ReverbType
-  Info
-  (iname [reverb]
-    (.getName reverb)))
-
 (defn decay-time ^long [^ReverbType reverb]
   (.getDecayTime reverb))
 
@@ -780,6 +806,26 @@
 
 (defn late-intensity ^double [^ReverbType reverb]
   (.getLateReflectionIntensity reverb))
+
+(extend-type ReverbType
+  commons/Info
+  (commons/info
+    ([this]
+     {:name (.getName this)
+      :decay-time (decay-time this)
+      :early-delay (early-delay this)
+      :early-intensity (early-intensity this)
+      :late-delay (late-delay this)
+      :late-intensity (late-intensity this)})
+    ([this info-type]
+     (case info-type
+       :name (.getName this)
+       :decay-time (decay-time this)
+       :early-delay (early-delay this)
+       :early-intensity (early-intensity this)
+       :late-delay (late-delay this)
+       :late-intensity (late-intensity this)
+       nil))))
 
 ;; =================== User friendly printing ==========================================
 

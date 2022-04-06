@@ -8,14 +8,17 @@
 
 (ns uncomplicate.clojure-sound.midi
   (:refer-clojure :exclude [sequence])
-  (:require [clojure.string :refer [trim]]
-   [uncomplicate.commons.core :refer [Releaseable Closeable close!] :as commons]
+  (:require [clojure
+             [string :refer [trim]]
+             [walk :refer [keywordize-keys]]]
+            [uncomplicate.commons.core :refer [Releaseable Closeable close!]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support SequenceSource set-sequence get-sequence
                                Load load-instruments unload-instruments simple-name key-name
                                ReceiverProvider get-receiver]]
-             [core :refer [write! Info InfoProvider Open Timing Reset Broadcast Activity Type
-                           Format active? InfoProvider connect! division resolution itype]]])
+             [core :refer [write! SoundInfoProvider Open Timing Reset Broadcast Activity Type
+                           Format active? connect! micro-length division resolution
+                           properties property itype]]])
   (:import [clojure.lang ILookup IFn]
            java.lang.reflect.Field
            java.net.URL
@@ -52,9 +55,15 @@
 
 (def sync-mode
   {:internal Sequencer$SyncMode/INTERNAL_CLOCK
-   :sync Sequencer$SyncMode/MIDI_SYNC
-   :time Sequencer$SyncMode/MIDI_TIME_CODE
+   :midi-sync Sequencer$SyncMode/MIDI_SYNC
+   :midi-time-code Sequencer$SyncMode/MIDI_TIME_CODE
    :no-sync Sequencer$SyncMode/NO_SYNC})
+
+(def sync-mode-key
+  {Sequencer$SyncMode/INTERNAL_CLOCK :internal
+   Sequencer$SyncMode/MIDI_SYNC :midi-sync
+   Sequencer$SyncMode/MIDI_TIME_CODE :midi-time-code
+   Sequencer$SyncMode/NO_SYNC :no-sync})
 
 (def timing-type
   {:ppq Sequence/PPQ
@@ -349,18 +358,23 @@
 ;; ============================= MidiDevice ================================
 
 (extend-type MidiDevice$Info
-  InfoProvider
-  (info [info]
-    info)
   Info
-  (description [info]
-    (.getDescription info))
-  (iname [info]
-    (.getName info))
-  (vendor [info]
-    (.getVendor info))
-  (version [info]
-    (.getVersion info)))
+  (info
+    ([this]
+     {:description (.getDescription this)
+      :name (.getName this)
+      :vendor (.getVendor this)
+      :version (.getVersion this)})
+    ([this info-type]
+     (case info-type
+       :description (.getDescription this)
+       :name (.getName this)
+       :vendor (.getVendor this)
+       :version (.getVersion this)
+       nil)))
+  SoundInfoProvider
+  (sound-info [info]
+    info))
 
 (defn ^long max-receivers [^MidiDevice device]
   (.getMaxReceivers device))
@@ -381,25 +395,29 @@
   (.getTransmitters device))
 
 (extend-type MidiDevice
+  Info
+  (info
+    ([this]
+     (merge {:class (simple-name (class this))
+             :status (if (.isOpen this) :open :closed)
+             :micro-position (.getMicrosecondPosition this)}
+            (info (.getDeviceInfo this))))
+    ([this info-type]
+     (case info-type
+       :class (simple-name (class this))
+       :status (if (.isOpen this) :open :closed)
+       :micro-position (.getMicrosecondPosition this)
+       (info (.getDeviceInfo this) info-type))))
   Releaseable
   (release [this]
     (close! this)
     true)
-  InfoProvider
-  (info [device]
+  SoundInfoProvider
+  (sound-info [device]
     (.getDeviceInfo device))
   ReceiverProvider
   (get-receiver [device]
     (.getReceiver device))
-  Info
-  (description [device]
-    (.getDescription (.getDeviceInfo device)))
-  (iname [device]
-    (.getName (.getDeviceInfo device)))
-  (vendor [device]
-    (.getVendor (.getDeviceInfo device)))
-  (version [device]
-    (.getVersion (.getDeviceInfo device)))
   Open
   (open! [device]
     (.open device)
@@ -419,6 +437,22 @@
 ;; ============================= MidiChannel ================================
 
 (extend-type MidiChannel
+  Info
+  (info
+    ([this]
+     {:mono (.getMono this)
+      :mute (.getMute this)
+      :omni (.getOmni this)
+      :solo (.getSolo this)
+      :program (.getProgram this)})
+    ([this info-type]
+     (case info-type
+       :mono (.getMono this)
+       :mute (.getMute this)
+       :omni (.getOmni this)
+       :solo (.getSolo this)
+       :program (.getProgram this)
+       nil)))
   Reset
   (re-set! [channel!]
     (.resetAllControllers channel!)
@@ -548,6 +582,16 @@
 ;; ============================= Receiver ================================
 
 (extend-type Receiver
+  Info
+  (info
+    ([this]
+     {:class (simple-name (class this))
+      :id (System/identityHashCode this)})
+    ([this info-type]
+     (case info-type
+       :class (simple-name (class this))
+       :id (System/identityHashCode this)
+       nil)))
   Releaseable
   (release [this]
     (close! this)
@@ -573,6 +617,16 @@
 ;; ============================= Transmitter ================================
 
 (extend-type Transmitter
+  Info
+  (info
+    ([this]
+     {:class (simple-name (class this))
+      :id (System/identityHashCode this)})
+    ([this info-type]
+     (case info-type
+       :class (simple-name (class this))
+       :id (System/identityHashCode this)
+       nil)))
   ReceiverProvider
   (get-receiver [transmitter]
     (.getReceiver transmitter))
@@ -604,37 +658,6 @@
         rc (receiver out)]
     (.setReceiver ^Transmitter tr rc)
     tr))
-
-;; ============================= Soundbank  ================================
-
-(extend-type Soundbank
-  Info
-  (description [soundbank]
-    (.getDescription soundbank))
-  (iname [soundbank]
-    (.getName soundbank))
-  (vendor [soundbank]
-    (.getVendor soundbank))
-  (version [soundbank]
-    (.getVersion soundbank))
-  Instruments
-  (instruments [soundbank]
-    (.getInstruments soundbank))
-  Load
-  (load-instruments [soundbank synth!]
-    (.loadAllInstruments ^Synthesizer synth! soundbank))
-  (unload-instruments [soundbank synth!]
-    (.unloadAllInstruments ^Synthesizer synth! soundbank))
-  Support
-  (supported [soundbank synth]
-    (.isSoundbankSupported ^Synthesizer synth soundbank)))
-
-(defn instrument
-  ([^Soundbank soundbank patch]
-   (.getInstrument soundbank patch)))
-
-(defn resources [^Soundbank soundbank]
-  (.getResources soundbank))
 
 ;; ============================= Sequencer ================================
 
@@ -745,25 +768,29 @@
   (.setLoopStartPoint sequencer! tick)
   sequencer!)
 
-(defn master-mode [^Sequencer sequencer]
-  (.getMasterSyncMode sequencer))
+(defn master-sync [^Sequencer sequencer]
+  (get sync-mode-key (.getMasterSyncMode sequencer)
+       (throw (ex-info "Unknown sync mode." {:mode (.getMasterSyncMode sequencer)
+                                             :available (keys sync-mode-key)}))))
 
-(defn master-mode! [^Sequencer sequencer! sync]
+(defn master-sync! [^Sequencer sequencer! sync]
   (.setMasterSyncMode sequencer! (get sync-mode sync sync))
   sequencer!)
 
 (defn master-modes [^Sequencer sequencer]
-  (.getMasterSyncModes sequencer))
+  (map sync-mode-key (.getMasterSyncModes sequencer)))
 
-(defn slave-mode [^Sequencer sequencer]
-  (.getSlaveSyncMode sequencer))
+(defn slave-sync [^Sequencer sequencer]
+  (get sync-mode-key (.getSlaveSyncMode sequencer)
+       (throw (ex-info "Unknown sync mode." {:mode (.getSlaveSyncMode sequencer)
+                                             :available (keys sync-mode-key)}))))
 
-(defn slave-mode! [^Sequencer sequencer! sync]
+(defn slave-sync! [^Sequencer sequencer! sync]
   (.setSlaveSyncMode sequencer! (get sync-mode sync sync))
   sequencer!)
 
 (defn slave-modes [^Sequencer sequencer]
-  (.getSlaveSyncModes sequencer))
+  (get sync-mode-key (.getSlaveSyncModes sequencer)))
 
 (defn tempo-factor ^double [^Sequencer sequencer]
   (.getTempoFactor sequencer))
@@ -848,12 +875,57 @@
 (defn remap! [^Synthesizer synth! from to]
   (.remapInstrument synth! from to))
 
+;; ============================= Soundbank  ================================
+
+(extend-type Soundbank
+  Info
+  (info
+    ([this]
+     {:class (simple-name (class this))
+      :description (.getDescription this)
+      :name (.getName this)
+      :vendor (.getVendor this)
+      :version (.getVersion this)})
+    ([this info-type]
+     (case info-type
+       :class (simple-name (class this))
+       :description (.getDescription this)
+       :name (.getName this)
+       :vendor (.getVendor this)
+       :version (.getVersion this)
+       nil)))
+  Instruments
+  (instruments [soundbank]
+    (.getInstruments soundbank))
+  Load
+  (load-instruments [soundbank synth!]
+    (.loadAllInstruments ^Synthesizer synth! soundbank))
+  (unload-instruments [soundbank synth!]
+    (.unloadAllInstruments ^Synthesizer synth! soundbank))
+  Support
+  (supported [soundbank synth]
+    (.isSoundbankSupported ^Synthesizer synth soundbank)))
+
+(defn instrument
+  ([^Soundbank soundbank patch]
+   (.getInstrument soundbank patch)))
+
+(defn resources [^Soundbank soundbank]
+  (.getResources soundbank))
+
 ;; =================== SoundbankResource ==========================================
 
 (extend-type SoundbankResource
   Info
-  (iname [this]
-    (.getName this))
+  (info
+    ([this]
+     {:name (.getName this)
+      :data-class (.getDataClass this)})
+    ([this info-type]
+     (case info-type
+       :name (.getName this)
+       :data-class (.getDataClass this)
+       nil)))
   Data
   (data [resource]
     (.getData resource)))
@@ -871,9 +943,44 @@
     (.unloadInstrument ^Synthesizer synth! instrument)
     synth!))
 
+;; =================== Patch ===========================================================
+
+(extend-type Patch
+  Info
+  (info
+    ([this]
+     {:bank (.getBank this)
+      :program (.getProgram this)})
+    ([this info-type]
+     (case info-type
+       :bank (.getBank this)
+       :program (.getProgram this)
+       nil)))
+  Program
+  (program [patch]
+    (.getProgram patch)))
+
+(defn patch
+  ([^Instrument instrument]
+   (.getPatch instrument))
+  ([bank program]
+   (Patch. bank program)))
+
+(defn bank ^long [^Patch patch]
+  (.getBank patch))
+
 ;; =================== MidiFileFormat ==================================================
 
 (extend-type MidiFileFormat
+  Info
+  (info
+    ([mff]
+     (into {:type (.getType mff)}
+           (map (fn [[k v]] [(name-key k) v] ) (properties mff))))
+    ([mff info-type]
+     (case info-type
+       :type (.getType mff)
+       (property mff (key-name info-type)))))
   Timing
   (micro-length [mff]
     (.getMicrosecondLength mff))
@@ -884,8 +991,8 @@
   Format
   (property [mff key]
     (.getProperty mff (name key)))
-  (properties [mf]
-    (.properties mf))
+  (properties [mff]
+    (.properties mff))
   (byte-length [mff]
     (.getByteLength mff))
   Type
@@ -902,6 +1009,23 @@
 
 ;; =================== MidiMessage =====================================================
 
+(extend-type MidiMessage
+  Info
+  (info
+    ([this]
+     {:status (.getStatus this)
+      :length (.getLength this)
+      :bytes (.getMessage this)})
+    ([this info-type]
+     (case info-type
+       :status (.getStatus this)
+       :length (.getLength this)
+       :bytes (.getMessage this)
+       nil)))
+  Event
+  (event [message tick]
+    (MidiEvent. message tick)))
+
 (defn message-bytes [^MidiMessage message]
   (.getMessage message))
 
@@ -910,23 +1034,6 @@
 
 (defn status [^MidiMessage message]
   (.getStatus message))
-
-(extend-type MidiMessage
-  commons/Info
-  (commons/info
-    ([message]
-     {:status (status message)
-      :length (message-length message)
-      :bytes (message-bytes message)})
-    ([message info-type]
-     (case info-type
-       :status (status message)
-       :length (message-length message)
-       :bytes (message-bytes message)
-       nil)))
-  Event
-  (event [message tick]
-    (MidiEvent. message tick)))
 
 ;; =================== MetaMessage =====================================================
 
@@ -971,18 +1078,21 @@
          :data (Arrays/copyOfRange data 1 (alength data))})))
 
 (extend-type MetaMessage
-  commons/Info
-  (commons/info
-    ([message]
-     {:type (itype message)
-      :data (decode message)})
-    ([message info-type]
+  Info
+  (info
+    ([this]
+     {:status (.getStatus this)
+      :length (.getLength this)
+      :bytes (.getMessage this)
+      :type (itype this)
+      :data (decode this)})
+    ([this info-type]
      (case info-type
-       :status (status message)
-       :length (message-length message)
-       :bytes (message-bytes message)
-       :type (itype message)
-       :data (decode message)
+       :status (.getStatus this)
+       :length (.getLength this)
+       :bytes (.getMessage this)
+       :type (itype this)
+       :data (decode this)
        nil)))
   Type
   (itype [message]
@@ -1027,65 +1137,6 @@
   ([type data length]
    (MetaMessage. type data length)))
 
-;; =================== MidiEvent ======================================================
-
-(defn message [^MidiEvent event]
-  (.getMessage event))
-
-(defn tick [^MidiEvent event]
-  (.getTick event))
-
-(defn tick! [^MidiEvent event! tick]
-  (.setTick event! tick)
-  event!)
-
-;; =================== Patch ===========================================================
-
-(extend-type Patch
-  Program
-  (program [patch]
-    (.getProgram patch)))
-
-(defn patch
-  ([^Instrument instrument]
-   (.getPatch instrument))
-  ([bank program]
-   (Patch. bank program)))
-
-;; =================== Sequence ========================================================
-
-(defn tracks [^Sequence sequence]
-  (.getTracks sequence))
-
-(defn sequence
-  ([source]
-   (get-sequence source))
-  ([division ^long resolution]
-   (Sequence. (get timing-type division division) resolution))
-  ([division ^long resolution ^long num-tracks]
-   (Sequence. (get timing-type division division) resolution num-tracks)))
-
-(extend-type Sequence
-  Timing
-  (micro-length [s]
-    (.getMicrosecondLength s))
-  (division [s]
-    (.getDivisionType s))
-  (resolution [s]
-    (.getResolution s))
-  Tick
-  (ticks [s]
-    (.getTickLength s)))
-
-(defn track! [^Sequence sequence!]
-  (.createTrack sequence!))
-
-(defn delete! [^Sequence sequence! track]
-  (.deleteTrack sequence! track))
-
-(defn patches [^Sequence sequence]
-  (.getPatchList sequence))
-
 ;; =================== ShortMessage =====================================================
 
 (defn channel [^ShortMessage message]
@@ -1115,8 +1166,8 @@
              nil))))
 
 (extend-type ShortMessage
-  commons/Info
-  (commons/info
+  Info
+  (info
     ([message]
      (let [decoded-data (decode message)]
        (merge {:channel (channel message)
@@ -1177,8 +1228,8 @@
 ;; =================== SysexMessage =====================================================
 
 (extend-type SysexMessage
-  commons/Info
-  (commons/info
+  Info
+  (info
     ([message]
      (decode message))
     ([message info-type]
@@ -1186,7 +1237,7 @@
        :status (status message)
        :length (message-length message)
        :bytes (message-bytes message)
-       ((decode message) info-type))))
+       (get (decode message) info-type nil))))
   Data
   (data [message]
     (.getData message))
@@ -1213,9 +1264,85 @@
   ([status data length]
    (SysexMessage. (get command-type status status) data length)))
 
+;; =================== MidiEvent ======================================================
+
+(extend-type MidiEvent
+  Info
+  (info
+    ([this]
+     (assoc (info (.getMessage this))
+            :tick (.getTick this)))
+    ([this info-type]
+     (case info-type
+       :tick (.getTick this)
+       (info (.getMessage this))))))
+
+(defn message [^MidiEvent event]
+  (.getMessage event))
+
+(defn tick [^MidiEvent event]
+  (.getTick event))
+
+(defn tick! [^MidiEvent event! tick]
+  (.setTick event! tick)
+  event!)
+
+;; =================== Sequence ========================================================
+
+(extend-type Sequence
+  Info
+  (info
+    ([this]
+     {:ticks (.getTickLength this)})
+    ([this info-type]
+     (case info-type
+       :id (System/identityHashCode this)
+       :ticks (.getTickLength this)
+       nil)))
+  Timing
+  (micro-length [this]
+    (.getMicrosecondLength this))
+  (division [this]
+    (.getDivisionType this))
+  (resolution [this]
+    (.getResolution this))
+  Tick
+  (ticks [this]
+    (.getTickLength this)))
+
+(defn sequence
+  ([source]
+   (get-sequence source))
+  ([division ^long resolution]
+   (Sequence. (get timing-type division division) resolution))
+  ([division ^long resolution ^long num-tracks]
+   (Sequence. (get timing-type division division) resolution num-tracks)))
+
+(defn tracks [^Sequence sequence]
+  (.getTracks sequence))
+
+(defn patches [^Sequence sequence]
+  (.getPatchList sequence))
+
+(defn track! [^Sequence sequence!]
+  (.createTrack sequence!))
+
+(defn delete! [^Sequence sequence! track]
+  (.deleteTrack sequence! track))
+
 ;; =================== Track ==========================================
 
 (extend-type Track
+  Info
+  (info
+    ([this]
+     {:size (.size this)
+      :ticks (.ticks this)})
+    ([this info-type]
+     (case info-type
+       :size (.size this)
+       :ticks (.ticks this)
+       nil)))
   Event
   (event [track i]
     (.get track i))
@@ -1234,24 +1361,23 @@
 
 ;; =================== VoiceStatus ==========================================
 
-(extend-type VoiceStatus
-  Activity
-  (active? [status]
-    (.active status)))
-
 (defn voice-status-info
   ([^VoiceStatus status]
    (into {:class "VoiceStatus"}
          (if (active? status)
-           (map (fn [^Field field]
-                  (vector (name-key (.getName field)) (.get field status)))
-                (.getDeclaredFields VoiceStatus))
-           [[:active false]])))
+           (remove nil?
+                   (map (fn [^Field field]
+                          (try
+                            (vector (name-key (.getName field)) (.get field status))
+                            (catch IllegalAccessException e nil)))
+                        (.getDeclaredFields VoiceStatus))
+                   [[:active false]]))))
   ([^VoiceStatus status key]
    (if (active? status)
      (case key
+       :class "VoiceStatus"
        :active (.active status)
-       :bean (.bank status)
+       :bank (.bank status)
        :channel (.channel status)
        :note (.note status)
        :program (.program status)
@@ -1262,88 +1388,141 @@
          (catch IllegalAccessException e nil)))
      (if (= key :active) false nil))))
 
+(extend-type VoiceStatus
+  Info
+  (info
+    ([this]
+     (voice-status-info this))
+    ([this info-type]
+     (voice-status-info this info-type)))
+  Activity
+  (active? [status]
+    (.active status)))
+
 ;; =================== User friendly printing ==========================================
 
-(defmethod print-method MidiDevice$Info
-  [info ^java.io.Writer w]
-  (.write w (pr-str (update (bean info) :class simple-name))))
-
-(defmethod print-method MidiDevice
-  [device ^java.io.Writer w]
-  (.write w (pr-str (assoc (bean (device-info device)) :class (simple-name (class device))))))
-
-(defmethod print-method Receiver
-  [receiver ^java.io.Writer w]
-  (.write w (pr-str (bean receiver))))
-
-(defmethod print-method Transmitter
-  [transmitter ^java.io.Writer w]
-  (.write w (pr-str (bean transmitter))))
-
-(defmethod print-method Soundbank
-  [soundbank ^java.io.Writer w]
-  (.write w (pr-str (update (bean soundbank) :class simple-name))))
-
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiDevice$Info;")
-  [info ^java.io.Writer w]
-  (.write w (pr-str (seq info))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
 
-(defmethod print-method (Class/forName "[Ljavax.sound.midi.SoundbankResource;")
-  [resources ^java.io.Writer w]
-  (.write w (pr-str (seq resources))))
-
-(defmethod print-method (Class/forName "[Ljavax.sound.midi.Instrument;")
-  [instruments ^java.io.Writer w]
-  (.write w (pr-str (seq instruments))))
-
-(defmethod print-method (Class/forName "[Ljavax.sound.midi.Sequencer$SyncMode;")
-  [modes ^java.io.Writer w]
-  (.write w (pr-str (seq modes))))
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiDevice;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiChannel;")
-  [channel ^java.io.Writer w]
-  (.write w (pr-str (seq channel))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
 
-(defmethod print-method (Class/forName "[Ljavax.sound.midi.VoiceStatus;")
-  [voices ^java.io.Writer w]
-  (.write w (pr-str (seq voices))))
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.Receiver;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.Transmitter;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.Soundbank;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.SoundbankResource;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.Instrument;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Patch;")
-  [patches ^java.io.Writer w]
-  (.write w (pr-str (seq patches))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiFileFormat;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.Sequencer$SyncMode;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.VoiceStatus;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiMessage;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.MetaMessage;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.ShortMessage;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.SysexMessage;")
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Track;")
-  [tracks ^java.io.Writer w]
-  (.write w (pr-str (seq tracks))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
+
+(defmethod print-method MidiDevice$Info
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method MidiDevice
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method MidiChannel
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method Receiver
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method Transmitter
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method Soundbank
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
 
 (defmethod print-method SoundbankResource
-  [resource ^java.io.Writer w]
-  (.write w (pr-str (update (bean resource) :class simple-name))))
-
-(defmethod print-method MidiEvent
-  [event ^java.io.Writer w]
-  (.write w (pr-str (update (bean event) :class simple-name))))
-
-(defmethod print-method MidiMessage
-  [message ^java.io.Writer w]
-  (.write w (pr-str (commons/info message))))
-
-(defmethod print-method MetaMessage
-  [message ^java.io.Writer w]
-  (.write w (pr-str (assoc (commons/info message) :class (simple-name (class message))))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
 
 (defmethod print-method Patch
-  [message ^java.io.Writer w]
-  (.write w (pr-str (update (bean patch) :class simple-name))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method MidiFileFormat
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method MidiMessage
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method MetaMessage
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method MidiEvent
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
 
 (defmethod print-method Sequence
-  [s ^java.io.Writer w]
-  (.write w (pr-str (update (bean s) :class simple-name))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (assoc (info this) :id (System/identityHashCode this)))))
 
 (defmethod print-method Track
-  [track ^java.io.Writer w]
-  (.write w (pr-str (update (bean track) :class simple-name))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (assoc (info this) :id (System/identityHashCode this)))))
 
 (defmethod print-method VoiceStatus
-  [^VoiceStatus status ^java.io.Writer w]
-  (.write w (pr-str (voice-status-info status))))
+  [^VoiceStatus this ^java.io.Writer w]
+  (.write w (pr-str (info this))))

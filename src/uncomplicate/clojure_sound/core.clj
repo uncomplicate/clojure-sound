@@ -16,14 +16,8 @@
             MidiMessage Patch Sequence Sequencer$SyncMode ShortMessage SoundbankResource
             SysexMessage Track VoiceStatus]))
 
-(defprotocol Info
-  (description [this])
-  (iname [this])
-  (vendor [this])
-  (version [this]))
-
-(defprotocol InfoProvider
-  (info [this]))
+(defprotocol SoundInfoProvider ;;TODO rename
+  (sound-info [this]))
 
 (defprotocol Open
   (open! [this!] [this! buffer-size] [this! format data offset buffer-size])
