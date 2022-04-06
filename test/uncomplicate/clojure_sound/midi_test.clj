@@ -131,6 +131,7 @@
            (finally ;; So I can interrupt the music while testing...
              (close! sqcr)))))
 
+;;TODO
 #_(facts "Recording and saving sequences."
          (let [player (sequencer)
                maple (sequence (clojure.java.io/resource "maple.mid"))
@@ -229,10 +230,10 @@
       (close! sqcr))))
 
 (let [synth (synthesizer)
-             sqcr (sequencer)
-             fluid (soundbank (clojure.java.io/resource "FluidR3_GM.sf2"))
-             maple (sequence (clojure.java.io/resource "maple.mid"))
-             finished? (promise)]
+      sqcr (sequencer)
+      fluid (soundbank (clojure.java.io/resource "FluidR3_GM.sf2"));; Note: This soundbank is freely available on the internet. Please google it.
+      maple (sequence (clojure.java.io/resource "maple.mid"))
+      finished? (promise)]
   (try
     (facts "Managing instruments and sound banks."
            (count (instruments synth)) => 0
