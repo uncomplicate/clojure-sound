@@ -1,4 +1,4 @@
-[New books available for subscription](https://aiprobook.com)
+[New books available](https://aiprobook.com)
 
 <img src="http://aiprobook.com/img/dlfp-cover.png" alt="Deep Learning for Programmers" title="Deep Learning for Programmers" align="left" width="250"/>
 

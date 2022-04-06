@@ -9,7 +9,7 @@
 (ns uncomplicate.clojure-sound.midi
   (:refer-clojure :exclude [sequence])
   (:require [clojure
-             [string :refer [trim]]
+             [string :refer [trim join]]
              [walk :refer [keywordize-keys]]]
             [uncomplicate.commons.core :refer [Releaseable Closeable close! Info info]]
             [uncomplicate.clojure-sound
@@ -473,7 +473,7 @@
    channel!))
 
 (defn on! [^MidiChannel channel! ^long note ^long velocity]
-  (.noteOff channel! note velocity)
+  (.noteOn channel! note velocity)
   channel!)
 
 (defn sound-off! [^MidiChannel channel!]
@@ -844,7 +844,16 @@
 (extend-type Synthesizer
   Instruments
   (instruments [synth]
-    (.getLoadedInstruments synth)))
+    (.getLoadedInstruments synth))
+  Load
+  (load-instruments [source synth!]
+    (every? identity (map #(.loadInstrument ^Synthesizer synth! %)
+                          (.getAvailableInstruments source))))
+  (unload-instruments [source synth!]
+    (let [instruments (.getLoadedInstruments source)]
+      (dotimes [i (alength instruments)]
+        (.unloadInstrument ^Synthesizer synth! (aget instruments i)))
+      synth!)))
 
 (defn available [^Synthesizer synth]
   (.getAvailableInstruments synth))
@@ -862,15 +871,26 @@
   (.getVoiceStatus synth))
 
 (defn load!
+  ([synth!]
+   (load-instruments synth! synth!))
   ([synth! source]
-   (load-instruments source synth!))
+   (if (seqable? source)
+     (every? identity (map #(load-instruments % synth!) source))
+     (load-instruments source synth!)))
   ([^Synthesizer synth! soundbank patches]
    (.loadInstruments synth! soundbank
                      (if (sequential? patches) (into-array Patch patches) patches))))
 
-(defn unload! [synth! source]
-  (unload-instruments source synth!)
-  synth!)
+(defn unload!
+  ([synth!]
+   (unload-instruments synth! synth!)
+   synth!)
+  ([synth! source]
+   (if (seqable? source)
+     (doseq [instrument source]
+       (unload-instruments source synth!))
+     (unload-instruments source synth!))
+   synth!))
 
 (defn remap! [^Synthesizer synth! from to]
   (.remapInstrument synth! from to))
@@ -901,7 +921,8 @@
   (load-instruments [soundbank synth!]
     (.loadAllInstruments ^Synthesizer synth! soundbank))
   (unload-instruments [soundbank synth!]
-    (.unloadAllInstruments ^Synthesizer synth! soundbank))
+    (.unloadAllInstruments ^Synthesizer synth! soundbank)
+    synth!)
   Support
   (supported [soundbank synth]
     (.isSoundbankSupported ^Synthesizer synth soundbank)))
@@ -919,12 +940,10 @@
   Info
   (info
     ([this]
-     {:name (.getName this)
-      :data-class (.getDataClass this)})
+     {:name (.getName this)})
     ([this info-type]
      (case info-type
        :name (.getName this)
-       :data-class (.getDataClass this)
        nil)))
   Data
   (data [resource]
@@ -1370,8 +1389,8 @@
                           (try
                             (vector (name-key (.getName field)) (.get field status))
                             (catch IllegalAccessException e nil)))
-                        (.getDeclaredFields VoiceStatus))
-                   [[:active false]]))))
+                        (.getDeclaredFields VoiceStatus)))
+           [[:active false]])))
   ([^VoiceStatus status key]
    (if (active? status)
      (case key
@@ -1402,70 +1421,80 @@
 ;; =================== User friendly printing ==========================================
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiDevice$Info;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiDevice;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiChannel;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Receiver;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Transmitter;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Soundbank;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.SoundbankResource;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Instrument;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Patch;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiFileFormat;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Sequencer$SyncMode;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.Sequence;")
+  [this w]
+  (print-method (seq this) w))
+
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.VoiceStatus;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiEvent;")
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiMessage;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.MetaMessage;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.ShortMessage;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
+
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.SysexMessage;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Track;")
-  [this ^java.io.Writer w]
-  (.write w (pr-str (seq this))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method MidiDevice$Info
   [this ^java.io.Writer w]

@@ -122,12 +122,13 @@
                                           (stop! sqcr)
                                           (close! sqcr) ;; Auto-close
                                           (deliver cleanup :confirmed))))
-           (start! sqcr)
+           (start! sqcr) => sqcr
+           (stop! sqcr) => sqcr
+           (running? sqcr) => false
+           (start! sqcr) => sqcr
            (running? sqcr) => true
            (deref cleanup) => :confirmed
            (finally ;; So I can interrupt the music while testing...
-             (Thread/sleep 1000)
-             (stop! sqcr)
              (close! sqcr)))))
 
 #_(facts "Recording and saving sequences."
@@ -227,11 +228,46 @@
       (stop! sqcr)
       (close! sqcr))))
 
-(facts "Managing instruments and soundbansk."
-       (let [synth (synthesizer)]
-         (try
+(let [synth (synthesizer)
+             sqcr (sequencer)
+             fluid (soundbank (clojure.java.io/resource "FluidR3_GM.sf2"))
+             maple (sequence (clojure.java.io/resource "maple.mid"))
+             finished? (promise)]
+  (try
+    (facts "Managing instruments and sound banks."
            (count (instruments synth)) => 0
-           (info (soundbank synth) :name) => "Emergency generated soundbank"
-           (finally
-
-             (close! synth) => synth))))
+           (info (soundbank synth) :name) => "Emergency GM sound set"
+           (count (available synth)) => 129
+           (load! synth (first (available synth))) => false
+           (open! synth)
+           (load! synth (first (available synth))) => true
+           (load! synth (available synth))
+           (count (instruments synth)) => 129
+           (unload! synth) => synth
+           (count (instruments synth)) => 0
+           (load! synth) => true
+           (unload! synth) => synth
+           (info fluid :name) => "Fluid R3 GM"
+           (load! synth fluid) => true
+           (count (instruments synth)) => 189
+           (open! sqcr)
+           (sequence! sqcr maple)
+           (open! synth)
+           (connect! sqcr synth)
+           (tick-position! sqcr 110092)
+           (listen! sqcr (partial deliver finished?) :end-of-track)
+           (start! sqcr)
+           @finished?)
+    (facts "Querying the synthesizer's capabilities and current state."
+           (latency synth) => 120000
+           (max-polyphony synth) => 64
+           (count (voice-status synth)) => 64)
+    (facts "Using channels."
+           (send! (receiver synth) (short-message :on 4 60 93))
+           (Thread/sleep 1000)
+           (on! (first (drop 4 (channels synth))) 60 93)
+           (Thread/sleep 1000))
+    (finally
+      (Thread/sleep 1000)
+      (close! sqcr)
+      (close! synth))))
