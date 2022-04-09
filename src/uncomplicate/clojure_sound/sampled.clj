@@ -585,6 +585,15 @@
 
 ;; ================== AudioFormat ======================================
 
+(extend-type AudioFormat$Encoding
+  Info
+  (info
+    ([this]
+     {:name (.toString this)})
+    ([this info-type]
+     (case info-type
+       :name (.toString this)))))
+
 (defn encoding [this]
   (if (instance? AudioFormat this)
     (.getEncoding ^AudioFormat this)
@@ -594,11 +603,11 @@
   Info
   (info
     ([this]
-     (into {:encoding (encoding this)}
+     (into {:encoding (.toString (encoding this))}
            (map (fn [[k v]] [(name-key k) v]) (properties this))))
     ([this info-type]
      (case info-type
-       :encoding (encoding this)
+       :encoding (.toString (encoding this))
        (map (fn [[k v]] [(name-key k) v]) (properties this)))))
   Support
   (supported [af line]
@@ -927,6 +936,13 @@
   (.write w (pr-str (seq mixers))))
 
 
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.AudioFormat;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.AudioFormat$Encoding;")
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.AudioFileFormat;")
   [this w]
@@ -940,6 +956,10 @@
   [this ^java.io.Writer w]
   (.write w (pr-str (info this))))
 
+(defmethod print-method AudioFormat$Encoding
+  [this ^java.io.Writer w]
+  (.write w (pr-str (name-key this))))
+
 (defmethod print-method AudioFileFormat
   [this ^java.io.Writer w]
   (.write w (pr-str (info this))))
@@ -950,9 +970,6 @@
 
 
 
-(defmethod print-method AudioFormat$Encoding
-  [enc ^java.io.Writer w]
-  (.write w (pr-str (name-key enc))))
 
 
 (defmethod print-method AudioInputStream
