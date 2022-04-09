@@ -12,7 +12,8 @@
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support simple-name]]
              [core :refer [write! SoundInfoProvider Open Timing Reset Broadcast Activity Type
-                           Format get-format SoundSystemProcedures file-format itype properties]]])
+                           Format get-format SoundSystemProcedures file-format itype properties
+                           sound-info]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
@@ -59,7 +60,7 @@
    :compact-disc Port$Info/COMPACT_DISC
    :cd Port$Info/COMPACT_DISC})
 
-(def ^:const line-key-class
+(def line-key-class
   {:target TargetDataLine
    :target-data-line TargetDataLine
    :source SourceDataLine
@@ -70,7 +71,7 @@
    :line Line
    :data-line DataLine})
 
-(def ^:const line-class-key
+(def line-class-key
   {TargetDataLine :target
    SourceDataLine :source
    Clip :clip
@@ -118,7 +119,7 @@
    AudioFileFormat$Type/SND :snd
    AudioFileFormat$Type/WAVE :wave})
 
-(def ^:const control-type
+(def control-type
   {:apply-reverb BooleanControl$Type/APPLY_REVERB
    :reverb EnumControl$Type/REVERB
    :mute BooleanControl$Type/MUTE
@@ -133,12 +134,31 @@
    :volume FloatControl$Type/VOLUME
    :vol FloatControl$Type/VOLUME})
 
+(def control-type-key
+  {BooleanControl$Type/APPLY_REVERB :apply-reverb
+   EnumControl$Type/REVERB :reverb
+   BooleanControl$Type/MUTE :mute
+   FloatControl$Type/AUX_RETURN :aux-return
+   FloatControl$Type/AUX_SEND :aux-send
+   FloatControl$Type/BALANCE :balance
+   FloatControl$Type/MASTER_GAIN :master-gain
+   FloatControl$Type/PAN :pan
+   FloatControl$Type/REVERB_RETURN :reverb-return
+   FloatControl$Type/REVERB_SEND :reverb-send
+   FloatControl$Type/SAMPLE_RATE :sample-rate
+   FloatControl$Type/VOLUME :volume})
 
 (def ^:const line-event-type
   {:close LineEvent$Type/CLOSE
    :open LineEvent$Type/OPEN
    :start LineEvent$Type/START
    :stop LineEvent$Type/STOP})
+
+(def ^:const line-event-type-key
+  {LineEvent$Type/CLOSE :close
+   LineEvent$Type/OPEN :open
+   LineEvent$Type/START :start
+   LineEvent$Type/STOP :stop})
 
 ;; =========================== AudioSystem ====================================
 
@@ -207,12 +227,12 @@
   Info
   (info
     ([this]
-     (assoc (info (.getLineInfo this))
-            :status (if (.isOpen this) :open :closed)))
+     {:class (.getLineClass (.getLineInfo this))
+      :status (if (.isOpen this) :open :closed)})
     ([this info-type]
      (case info-type
-       :status (if (.isOpen this) :open :closed)
-       (info (.getLineInfo this) info-type))))
+       :class (.getLineClass (.getLineInfo this))
+       :status (if (.isOpen this) :open :closed))))
   Releaseable
   (release [this]
     (close! this)
@@ -221,7 +241,7 @@
   (sound-info [line]
     (.getLineInfo this))
   Open
-  (open [line]
+  (open! [line]
     (.open line)
     line)
   (open? [line]
@@ -240,8 +260,11 @@
     (.removeLineListener line! listener)
     line!))
 
-(extend-type clojure.lang.Keyword
-  SoundInfoProvider
+(extend-protocol SoundInfoProvider
+  java.lang.Class
+  (sound-info [c]
+    (Line$Info. c))
+  clojure.lang.Keyword
   (sound-info [kw]
     (get port-info kw (ex-info "Unknown port info." {:type :sound-error
                                                      :requested kw
@@ -251,10 +274,10 @@
   Info
   (info
     ([this]
-     {:line-class (simple-name (.getLineClass this))})
+     {:class (simple-name (.getLineClass this))})
     ([this info-type]
      (case info-type
-       :line-class (simple-name (.getLineClass this))
+       :class (simple-name (.getLineClass this))
        nil)))
   SoundInfoProvider
   (sound-info [this]
@@ -266,25 +289,40 @@
   (supported [info]
     (AudioSystem/isLineSupported (get port-info info info))))
 
-(defn control
-  ([^Line line]
-   (.getControls line))
-  ([^Line line ^Control$Type control-type]
-   (.getControl line control-type)))
+(extend-type Port$Info
+  Info
+  (info
+    ([this]
+     {:class (simple-name (.getLineClass this))
+      :name (.getName this)})
+    ([this info-type]
+     (case info-type
+       :class (simple-name (.getLineClass this))
+       :name (.getName this)
+       nil))))
+
+(defn source? [^Port$Info port]
+  (.isSource port))
 
 (defn line-info
   ([this]
-   (if (keyword? this)
-     (port-info this)
-     (.getLineInfo ^Line this)))
+   (sound-info this))
   ([line-kind format]
    (DataLine$Info. (get line-key-class line-kind line-kind) format))
   ([line-kind format buffer-size]
-   (DataLine$Info. (get line-key-class line-kind line-kind) format buffer-size))
-  ([line-kind formats min-buffer-size max-buffer-size]
+   (if (number? buffer-size)
+     (DataLine$Info. (get line-key-class line-kind line-kind) format buffer-size)
+     (Port$Info. (get line-key-class line-kind line-kind) format buffer-size)))
+  ([line-kind formats ^long min-buffer-size ^long max-buffer-size]
    (DataLine$Info. (get line-key-class line-kind line-kind)
                    (if (sequential? formats) (into-array AudioFormat formats) formats)
                    min-buffer-size max-buffer-size)))
+
+(defn control
+  ([^Line line]
+   (.getControls line))
+  ([^Line line ctrl-type]
+   (.getControl line (get control-type ctrl-type ctrl-type))))
 
 (defn line-class [info]
   (.getLineClass ^Line$Info (get port-info info info)))
@@ -298,12 +336,27 @@
   (frame-position [event]
     (.getFramePosition event))
   Type
-  (mytype [control]
+  (itype [control]
     (.getType control)))
 
 ;; =================== DataLine ==========================================
 
 (extend-type DataLine
+  Info
+  (info
+    ([this]
+     {:class (.getLineClass (.getLineInfo this))
+      :status (if (.isOpen this) :open :closed)
+      :level (.getLevel this)
+      :active (.isActive this)
+      :running (.isRunning this)})
+    ([this info-type]
+     (case info-type
+       :class (.getLineClass (.getLineInfo this))
+       :status (if (.isOpen this) :open :closed)
+       :level (.getLevel this)
+       :active (.isActive this)
+       :running (.isRunning this))))
   Format
   (get-format [line]
     (.getFormat line))
@@ -430,23 +483,6 @@
     ([line format buffer-size]
      (.open line ^AudioFormat format buffer-size)
      line)))
-
-;; =========================== Port ============================================
-
-(extend-type Port$Info
-  Info
-  (info
-    ([this]
-     {:line-class (.getLineClass this)
-      :name (.getName this)})
-    ([this info-type]
-     (case info-type
-       :line-class (.getLineClass this)
-       :name (.getName this)
-       nil))))
-
-(defn source? [^Port$Info port]
-  (.isSource port))
 
 ;; =========================== Mixer ===========================================
 
@@ -709,11 +745,11 @@
   ([this]
    (file-format this))
   ([type ^long byte-length format ^long frame-length]
-   (AudioFileFormat. (get audio-file-format-type type type) byte-length format frame-length))
+   (AudioFileFormat. (file-format-type type) byte-length format frame-length))
   ([type format ^long frame-length]
-   (AudioFileFormat. (get audio-file-format-type type type) format frame-length))
+   (AudioFileFormat. (file-format-type type) format frame-length))
   ([type args]
-   (AudioFileFormat. (get audio-file-format-type type type)
+   (AudioFileFormat. (file-format-type type)
                      (:format args) (:frame-length args)
                      (stringify-keys (dissoc args :format :frame-length)))))
 
@@ -768,11 +804,27 @@
 ;; =================== Control ==================================================
 
 (extend-type Control$Type
+  Info
+  (info
+    ([this]
+     {:name (.toString this)})
+    ([this info-type]
+     (case info-type
+       :name (.toString this)
+       nil)))
   Support
   (supported [this line]
     (.isControlSupported ^Line line this)))
 
 (extend-type Control
+  Info
+  (info
+    ([this]
+     {:type (.toString (.getType this))})
+    ([this info-type]
+     (case info-type
+       :type (.toString (.getType this))
+       nil)))
   Type
   (itype [control]
     (.getType control)))
@@ -919,6 +971,7 @@
   (.write w (pr-str (seq mixers))))
 
 
+
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.AudioFormat;")
   [this w]
   (print-method (seq this) w))
@@ -932,6 +985,31 @@
   (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.AudioFileFormat$Type;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Control;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.BooleanControl;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.CompoundControl;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.EnumControl;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.FloatControl;")
+  [this w]
+  (print-method (seq this) w))
+
+
+(defmethod print-method (Class/forName "[Ljava.lang.Object;")
   [this w]
   (print-method (seq this) w))
 
@@ -951,6 +1029,9 @@
   [this ^java.io.Writer w]
   (.write w (pr-str (info this))))
 
+(defmethod print-method Control$Type
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
 
 
 
