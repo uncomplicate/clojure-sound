@@ -16,6 +16,7 @@
                            sound-info]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
+           [java.security Permission]
            [javax.sound.sampled AudioSystem AudioFormat AudioInputStream AudioPermission
             AudioFormat AudioFormat$Encoding AudioFileFormat AudioFileFormat$Type Mixer Mixer$Info
             Line Line$Info DataLine DataLine$Info Port Port$Info SourceDataLine TargetDataLine Clip
@@ -612,12 +613,27 @@
 
 ;; ====================== AudioPermission ======================================
 
+(extend-type AudioPermission
+  Info
+  (info
+    ([this]
+     {:name (.getName this)})
+    ([this info-type]
+     (case info-type
+       :name (.getName this)
+       nil))))
+
 (defn audio-permission [permission]
-  (try (AudioPermission. (#{"play" "record"} (name permission)))
-       (catch NullPointerException e
-         (throw (ex-info (format "Unsupported permission: %s." permission)
-                         {:type :permission-error
-                          :requested permission :supported #{:play :record "play" "record"}})))))
+  (if (instance? AudioPermission permission)
+    permission
+    (try (AudioPermission. (#{"play" "record" "*"} (name permission)))
+         (catch NullPointerException e
+           (throw (ex-info (format "Unsupported permission: %s." permission)
+                           {:type :permission-error
+                            :requested permission :supported #{:play :record "play" "record"}}))))))
+
+(defn implies [^Permission this other]
+  (.implies this (audio-permission other)))
 
 ;; ================== AudioFormat ======================================
 
@@ -1059,6 +1075,10 @@
   (.write w (pr-str (info this))))
 
 (defmethod print-method Control$Type
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method AudioPermission
   [this ^java.io.Writer w]
   (.write w (pr-str (info this))))
 
