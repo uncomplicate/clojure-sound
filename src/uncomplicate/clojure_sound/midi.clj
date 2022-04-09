@@ -701,20 +701,24 @@
   Broadcast
   (listen!
     ([sequencer! listener]
-     (.addMetaEventListener sequencer!
-                            (if (instance? MetaEventListener listener)
-                              listener
-                              (meta-listener listener))))
+     (let [listener (if (instance? MetaEventListener listener)
+                      listener
+                      (meta-listener listener))]
+       (.addMetaEventListener sequencer! listener)
+       listener))
     ([sequencer! listener selection]
      (if (or (number? selection) (keyword? selection))
-       (.addMetaEventListener sequencer! (meta-listener selection listener))
-       (.addControllerEventListener sequencer!
-                                    (if (instance? ControllerEventListener listener)
-                                      listener
-                                      (->ControllerEventListenerFunction listener))
-                                    (if (sequential? selection)
-                                      (int-array selection)
-                                      selection)))))
+       (let [listener (meta-listener selection listener)]
+         (.addMetaEventListener sequencer! listener)
+         listener)
+       (let [listener (if (instance? ControllerEventListener listener)
+                        listener
+                        (ctrl-listener listener))]
+         (.addControllerEventListener sequencer! listener
+                                      (if (sequential? selection)
+                                        (int-array selection)
+                                        selection))
+         listener))))
   (ignore!
     ([sequencer! listener]
      (.removeMetaEventListener sequencer! listener)

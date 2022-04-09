@@ -19,7 +19,7 @@
 (defprotocol SoundSystemProcedures
   (file-format [this]))
 
-(defprotocol SoundInfoProvider ;;TODO rename
+(defprotocol SoundInfoProvider
   (sound-info [this]))
 
 (defprotocol Open

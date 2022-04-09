@@ -197,8 +197,8 @@
 
 (deftype LineListenerFunction [f]
   LineListener
-  (update [listener event]
-    (f listener event)))
+  (update [_ event]
+    (f event)))
 
 (defn line-listener [f]
   (->LineListenerFunction f))
@@ -231,11 +231,11 @@
     (.getLineInfo this))
   Broadcast
   (listen! [line! listener]
-    (.addLineListener line!
-                      (if (instance? LineListener listener)
-                        listener
-                        (->LineListenerFunction listener)))
-    line!)
+    (let [listener (if (instance? LineListener listener)
+                     listener
+                     (line-listener listener))]
+      (.addLineListener line! listener)
+      listener))
   (ignore! [line! listener]
     (.removeLineListener line! listener)
     line!))
@@ -243,7 +243,9 @@
 (extend-type clojure.lang.Keyword
   SoundInfoProvider
   (sound-info [kw]
-    (port-info kw)))
+    (get port-info kw (ex-info "Unknown port info." {:type :sound-error
+                                                     :requested kw
+                                                     :supported (keys port-info)}))))
 
 (extend-type Line$Info
   Info
@@ -255,8 +257,8 @@
        :line-class (simple-name (.getLineClass this))
        nil)))
   SoundInfoProvider
-  (sound-info [info]
-    info)
+  (sound-info [this]
+    this)
   Match
   (matches? [this other]
     (.matches this other))
