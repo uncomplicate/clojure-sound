@@ -1013,7 +1013,7 @@
   (info
     ([this]
      (into {:type (itype this)}
-           (map (fn [[k v]] [(name-key k) v] ) (properties this))))
+           (map (fn [[k v]] [(name-key k) v]) (properties this))))
     ([this info-type]
      (case info-type
        :type (itype this)

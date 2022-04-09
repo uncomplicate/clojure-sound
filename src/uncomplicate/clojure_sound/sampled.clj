@@ -12,7 +12,7 @@
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support simple-name]]
              [core :refer [write! SoundInfoProvider Open Timing Reset Broadcast Activity Type
-                           Format get-format SoundSystemProcedures file-format]]])
+                           Format get-format SoundSystemProcedures file-format itype properties]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
@@ -22,7 +22,7 @@
             EnumControl$Type FloatControl FloatControl$Type LineListener LineEvent LineEvent$Type
             ReverbType]))
 
-(defprotocol Matches
+(defprotocol Match
   (matches? [this other]))
 
 (defprotocol AudioSystemProcedures
@@ -110,6 +110,13 @@
    :au AudioFileFormat$Type/AU
    :snd AudioFileFormat$Type/SND
    :wave AudioFileFormat$Type/WAVE})
+
+(def audio-file-format-type-key
+  {AudioFileFormat$Type/AIFC :aifc
+   AudioFileFormat$Type/AIFF :aiff
+   AudioFileFormat$Type/AU :au
+   AudioFileFormat$Type/SND :snd
+   AudioFileFormat$Type/WAVE :wave})
 
 (def ^:const control-type
   {:apply-reverb BooleanControl$Type/APPLY_REVERB
@@ -269,7 +276,7 @@
   SoundInfoProvider
   (sound-info [info]
     info)
-  Matches
+  Match
   (matches? [this other]
     (.matches this other))
   Support
@@ -578,11 +585,25 @@
 
 ;; ================== AudioFormat ======================================
 
+(defn encoding [this]
+  (if (instance? AudioFormat this)
+    (.getEncoding ^AudioFormat this)
+    (get audio-encoding this (AudioFormat$Encoding. (name this)))))
+
 (extend-type AudioFormat
+  Info
+  (info
+    ([this]
+     (into {:encoding (encoding this)}
+           (map (fn [[k v]] [(name-key k) v]) (properties this))))
+    ([this info-type]
+     (case info-type
+       :encoding (encoding this)
+       (map (fn [[k v]] [(name-key k) v]) (properties this)))))
   Support
   (supported [af line]
     (.isFormatSupported ^DataLine$Info line af))
-  Matches
+  Match
   (matches? [af other]
     (.matches af other))
   Format
@@ -623,11 +644,6 @@
 (defn channels [^AudioFormat format]
   (.getChannels format))
 
-(defn encoding [this]
-  (if (instance? AudioFormat this)
-    (.getEncoding ^AudioFormat this)
-    (get audio-encoding this (AudioFormat$Encoding. (name this)))))
-
 (defn frame-rate ^double [^AudioFormat format]
   (.getFrameRate format))
 
@@ -645,22 +661,17 @@
 
 ;; =================== AudioFileFormat =================================================
 
-(extend-type AudioFileFormat
-  Frame
-  (frame-length [aff]
-    (.getFrameLength aff))
-  Type
-  (itype [aff]
-    (.getType aff))
-  Format
-  (get-format [aff]
-    (.getFormat aff))
-  (property [aff key]
-    (.getProperty aff (name key)))
-  (byte-length [aff]
-    (.getByteLength aff)))
-
 (extend-type AudioFileFormat$Type
+  Info
+  (info
+    ([this]
+     {:extension (.getExtension this)
+      :name (.toString this)})
+    ([this info-type]
+     (case info-type
+       :extension (.getExtension this)
+       :name (.toString this)
+       nil)))
   Support
   (supported [feature stream]
     (AudioSystem/isFileTypeSupported (get audio-file-format-type feature feature) stream)))
@@ -672,12 +683,35 @@
   ([aff]
    (if (instance? AudioFileFormat aff)
      (.getType ^AudioFileFormat aff)
-     (get audio-file-format-type aff (throw (ex-info "Unknown audio file type."
-                                                     {:type :sound-error
-                                                      :requested aff
-                                                      :supported (keys audio-file-format-type)})))))
+     (get audio-file-format-type aff (file-format-type (name aff) aff))))
   ([name extension]
-   (AudioFileFormat$Type. name extension)))
+   (AudioFileFormat$Type. (str name) (name extension))))
+
+(extend-type AudioFileFormat
+  Info
+  (info
+    ([this]
+     (into {:type (extension (itype this))}
+           (map (fn [[k v]] [(name-key k) v]) (properties this))))
+    ([this info-type]
+     (case info-type
+       :type (extension (itype this))
+       (map (fn [[k v]] [(name-key k) v]) (properties this)))))
+  Frame
+  (frame-length [aff]
+    (.getFrameLength aff))
+  Type
+  (itype [aff]
+    (.getType aff))
+  Format
+  (get-format [aff]
+    (.getFormat aff))
+  (property [aff key]
+    (.getProperty aff (name key)))
+  (properties [aff]
+    (.properties aff))
+  (byte-length [aff]
+    (.getByteLength aff)))
 
 (defn audio-file-format
   ([this]
@@ -892,21 +926,34 @@
   [mixers ^java.io.Writer w]
   (.write w (pr-str (seq mixers))))
 
+
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.AudioFileFormat;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.AudioFileFormat$Type;")
+  [this w]
+  (print-method (seq this) w))
+
 (defmethod print-method AudioFormat
-  [af ^java.io.Writer w]
-  (.write w (pr-str (bean af))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
 
 (defmethod print-method AudioFileFormat
-  [aff ^java.io.Writer w]
-  (.write w (pr-str (bean aff))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method AudioFileFormat$Type
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+
 
 (defmethod print-method AudioFormat$Encoding
   [enc ^java.io.Writer w]
   (.write w (pr-str (name-key enc))))
 
-(defmethod print-method AudioFileFormat$Type
-  [type ^java.io.Writer w]
-  (.write w (pr-str (name-key type))))
 
 (defmethod print-method AudioInputStream
   [stream ^java.io.Writer w]
