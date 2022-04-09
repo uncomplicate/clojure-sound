@@ -141,36 +141,17 @@
    :stop LineEvent$Type/STOP})
 
 ;; =========================== AudioSystem ====================================
-(extend-protocol AudioSystemProcedures
+
+(extend-protocol SoundSystemProcedures
   File
-  (afile-format [file]
+  (file-format [file]
     (AudioSystem/getAudioFileFormat file))
-  (audio-input-stream [file]
-    (AudioSystem/getAudioInputStream file))
   InputStream
-  (afile-format [stream]
+  (file-format [stream]
     (AudioSystem/getAudioFileFormat stream))
-  (audio-input-stream [stream]
-    (AudioSystem/getAudioInputStream stream))
   URL
   (afile-format [url]
-    (AudioSystem/getAudioFileFormat url))
-  (audio-input-stream [url]
-    (AudioSystem/getAudioInputStream url))
-  AudioFormat
-  (audio-input-stream [target source]
-    (AudioSystem/getAudioInputStream target ^AudioInputStream source))
-  (encodings [source]
-    (AudioSystem/getTargetEncodings source))
-  (convertible? [target source]
-    (AudioSystem/isConversionSupported target ^AudioFormat source))
-  AudioFormat$Encoding
-  (audio-input-stream [target source]
-    (AudioSystem/getAudioInputStream target ^AudioInputStream source))
-  (encodings [source]
-    (AudioSystem/getTargetEncodings source))
-  (convertible? [target source]
-    (AudioSystem/isConversionSupported target ^AudioFormat source)))
+    (AudioSystem/getAudioFileFormat url)))
 
 (extend-protocol AudioSystemProcedures
   File
@@ -594,20 +575,15 @@
      (case info-type
        :name (.toString this)))))
 
-(defn encoding [this]
-  (if (instance? AudioFormat this)
-    (.getEncoding ^AudioFormat this)
-    (get audio-encoding this (AudioFormat$Encoding. (name this)))))
-
 (extend-type AudioFormat
   Info
   (info
     ([this]
-     (into {:encoding (.toString (encoding this))}
+     (into {:encoding (.toString (.getEncoding this))}
            (map (fn [[k v]] [(name-key k) v]) (properties this))))
     ([this info-type]
      (case info-type
-       :encoding (.toString (encoding this))
+       :encoding (.toString (.getEncoding this))
        (map (fn [[k v]] [(name-key k) v]) (properties this)))))
   Support
   (supported [af line]
@@ -649,6 +625,11 @@
    (AudioFormat. (get audio-encoding encoding encoding)
                  sample-rate sample-size-bits channels frame-size frame-rate
                  (big-endian? endian) (stringify-keys properties))))
+
+(defn encoding [this]
+  (if (instance? AudioFormat this)
+    (.getEncoding ^AudioFormat this)
+    (get audio-encoding this (AudioFormat$Encoding. (name this)))))
 
 (defn channels [^AudioFormat format]
   (.getChannels format))
