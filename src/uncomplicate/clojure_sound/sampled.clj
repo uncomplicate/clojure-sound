@@ -863,10 +863,12 @@
   Info
   (info
     ([this]
-     {:type (.toString (.getType this))})
+     {:type (.toString (.getType this))
+      :value (value this)})
     ([this info-type]
      (case info-type
        :type (.toString (.getType this))
+       :value (value this)
        nil)))
   Type
   (itype [control]
@@ -876,10 +878,11 @@
 
 (extend-type BooleanControl
   Value
-  (value [bc]
-    (.getValue bc))
-  (value! [bc! val]
-    (.setValue bc! val)))
+  (value [this]
+    (.getValue this))
+  (value! [this! val]
+    (.setValue this! val)
+    bc!))
 
 (defn state-label [^BooleanControl control state]
   (.getStateLabel control state))
@@ -893,10 +896,11 @@
 
 (extend-type EnumControl
   Value
-  (value [control]
-    (.getValue control))
-  (value! [control! val]
-    (.setValue control! val)))
+  (value [this]
+    (.getValue this))
+  (value! [this! val]
+    (.setValue this! val)
+    bc!))
 
 (defn values [^EnumControl control]
   (.getValues control))
@@ -905,10 +909,11 @@
 
 (extend-type FloatControl
   Value
-  (value [control]
-    (.getValue control))
-  (value! [control! val]
-    (.setValue control! val)))
+  (value [this]
+    (.getValue this))
+  (value! [this! val]
+    (.setValue this! val)
+    bc!))
 
 (defn maximum ^double [^FloatControl control]
   (.getMaximum control))
@@ -934,8 +939,11 @@
 (defn update-period ^long [^FloatControl control]
   (.getUpdatePeriod control))
 
-(defn shift! [^FloatControl control ^double from ^double to ^long microseconds]
-  (.shift control from to microseconds))
+(defn shift!
+  ([control ^long microseconds]
+   (shift! control (minimum control) (maximum control) microseconds))
+  ([^FloatControl control ^double from ^double to ^long microseconds]
+   (.shift control from to microseconds)))
 
 ;; =================== ReverbType  =====================================================
 
@@ -1099,6 +1107,7 @@
 (defmethod print-method Control
   [control ^java.io.Writer w]
   (.write w (pr-str (bean control))))
+
 
 
 (defmethod print-method LineEvent
