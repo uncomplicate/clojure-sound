@@ -16,12 +16,13 @@
                            sound-info]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
-           [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
+           [javax.sound.sampled AudioSystem AudioFormat AudioInputStream AudioPermission
             AudioFormat AudioFormat$Encoding AudioFileFormat AudioFileFormat$Type Mixer Mixer$Info
             Line Line$Info DataLine DataLine$Info Port Port$Info SourceDataLine TargetDataLine Clip
             Control$Type Control BooleanControl BooleanControl$Type CompoundControl EnumControl
             EnumControl$Type FloatControl FloatControl$Type LineListener LineEvent LineEvent$Type
-            ReverbType]))
+            ReverbType]
+           [clojure.lang Sequential Keyword] ))
 
 (defprotocol Match
   (matches? [this other]))
@@ -271,7 +272,7 @@
   java.lang.Class
   (sound-info [c]
     (Line$Info. c))
-  clojure.lang.Keyword
+  Keyword
   (sound-info [kw]
     (get port-info kw (ex-info "Unknown port info." {:type :sound-error
                                                      :requested kw
@@ -530,12 +531,12 @@
        :class (simple-name (class this))
        :status (if (.isOpen this) :open :closed)
        (info (.getMixerInfo this) info-type))))
+  SoundInfoProvider
+  (sound-info [mixer]
+    (.getMixerInfo mixer))
   Support
   (supported [this info]
-    (.isLineSupported this (get port-info info info)))
-  SoundInfoProvider
-  (sount-info [mixer]
-    (.getMixerInfo mixer)))
+    (.isLineSupported this (get port-info info info))))
 
 (defn mixer-info
   ([]
@@ -595,10 +596,13 @@
    (.isSynchronizationSupported mixer (if (sequential? lines) (into-array Line lines) lines)
                                 maintain-sync?)))
 
-(extend-type (Class/forName "[Ljavax.sound.sampled.Line;")
-  Support
+(extend-protocol Support
+  (Class/forName "[Ljavax.sound.sampled.Line;")
   (supported [lines mixer]
-    (sync-supported? mixer lines true)))
+    (sync-supported? mixer lines true))
+  Sequential
+  (supported [lines mixer]
+    (sync-supported? mixer (into-array Line lines) true)))
 
 (defn sync! [^Mixer mixer! lines maintain-sync?]
   (.synchronize mixer! (if (sequential? lines) (into-array Line lines) lines) maintain-sync?))
@@ -946,43 +950,21 @@
 
 ;; =================== User friendly printing ==========================================
 
-(defmethod print-method Line$Info
-  [info ^java.io.Writer w]
-  (.write w (pr-str (-> (bean info) (dissoc :class)
-                        (update :lineClass line-class-key)))))
-
-(defmethod print-method Mixer$Info
-  [info ^java.io.Writer w]
-  (.write w (pr-str (bean info))))
-
-(defmethod print-method Mixer
-  [mixer ^java.io.Writer w]
-  (.write w (pr-str (assoc (bean (mixer-info mixer)) :class "Mixer"))))
-
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer$Info;")
-  [info ^java.io.Writer w]
-  (.write w (pr-str (seq info))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.Line$Info;")
-  [info ^java.io.Writer w]
-  (.write w (pr-str (seq info))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.DataLine$Info;")
-  [info ^java.io.Writer w]
-  (.write w (pr-str (seq info))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.Port$Info;")
-  [info ^java.io.Writer w]
-  (.write w (pr-str (seq info))))
-
-(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Line;")
-  [lines ^java.io.Writer w]
-  (.write w (pr-str (seq lines))))
-
-(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer;")
-  [mixers ^java.io.Writer w]
-  (.write w (pr-str (seq mixers))))
-
+  [this ^java.io.Writer w]
+  (.write w (pr-str (seq this))))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.Line;")
   [this w]
@@ -1001,6 +983,10 @@
   (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.TargetDataLine;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Mixer;")
   [this w]
   (print-method (seq this) w))
 
@@ -1052,26 +1038,9 @@
   [this ^java.io.Writer w]
   (.write w (pr-str (info this))))
 
-(defmethod print-method DataLine
+(defmethod print-method Line$Info
   [this ^java.io.Writer w]
   (.write w (pr-str (info this))))
-
-(defmethod print-method Port
-  [this ^java.io.Writer w]
-  (.write w (pr-str (info this))))
-
-(defmethod print-method Clip
-  [this ^java.io.Writer w]
-  (.write w (pr-str (info this))))
-
-(defmethod print-method SourceDataLine
-  [this ^java.io.Writer w]
-  (.write w (pr-str (info this))))
-
-(defmethod print-method TargetDataLine
-  [this ^java.io.Writer w]
-  (.write w (pr-str (info this))))
-
 
 (defmethod print-method AudioFormat
   [this ^java.io.Writer w]
