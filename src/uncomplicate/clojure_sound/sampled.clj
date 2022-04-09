@@ -811,12 +811,22 @@
   (^long [^InputStream stream ^bytes array! ^long offset, ^long length]
    (.read stream array! offset length)))
 
-(defn skip! [^InputStream stream! long n]
+(defn skip! [^InputStream stream! ^long n]
   (.skip stream! n))
 
 ;; =================== AudioInputStream ================================================
 
 (extend-type AudioInputStream
+  Info
+  (info
+    ([this]
+     {:format (info (.getFormat this))
+      :length (.getFrameLength this)})
+    ([this info-type]
+     (case info-type
+       :format (info (.getFormat this))
+       :length (.getFrameLength this)
+       nil)))
   Releaseable
   (release [this]
     (.close this)
@@ -825,8 +835,8 @@
   (get-format [this]
     (.getFormat this))
   Frame
-  (frame-length [clip]
-    (.getFrameLength clip)))
+  (frame-length [this]
+    (.getFrameLength this)))
 
 (defn audio-input
   ([stream format ^long length]
@@ -1058,6 +1068,10 @@
   [this ^java.io.Writer w]
   (.write w (pr-str (info this))))
 
+(defmethod print-method AudioPermission
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
 (defmethod print-method AudioFormat
   [this ^java.io.Writer w]
   (.write w (pr-str (info this))))
@@ -1074,28 +1088,18 @@
   [this ^java.io.Writer w]
   (.write w (pr-str (info this))))
 
+(defmethod print-method AudioInputStream
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
 (defmethod print-method Control$Type
   [this ^java.io.Writer w]
   (.write w (pr-str (info this))))
-
-(defmethod print-method AudioPermission
-  [this ^java.io.Writer w]
-  (.write w (pr-str (info this))))
-
-
-
-
-(defmethod print-method AudioInputStream
-  [stream ^java.io.Writer w]
-  (.write w (pr-str (bean stream))))
 
 (defmethod print-method Control
   [control ^java.io.Writer w]
   (.write w (pr-str (bean control))))
 
-(defmethod print-method Control$Type
-  [type ^java.io.Writer w]
-  (.write w (pr-str (name-key type))))
 
 (defmethod print-method LineEvent
   [event ^java.io.Writer w]
