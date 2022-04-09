@@ -150,13 +150,13 @@
    FloatControl$Type/SAMPLE_RATE :sample-rate
    FloatControl$Type/VOLUME :volume})
 
-(def ^:const line-event-type
+(def line-event-type
   {:close LineEvent$Type/CLOSE
    :open LineEvent$Type/OPEN
    :start LineEvent$Type/START
    :stop LineEvent$Type/STOP})
 
-(def ^:const line-event-type-key
+(def line-event-type-key
   {LineEvent$Type/CLOSE :close
    LineEvent$Type/OPEN :open
    LineEvent$Type/START :start
@@ -336,17 +336,37 @@
 (defn line-class [info]
   (.getLineClass ^Line$Info (get port-info info info)))
 
-
-(defn event [line event-type ^long position]
-  (LineEvent. line event-type position))
+(extend-type LineEvent$Type
+  Info
+  (info
+    ([this]
+     {:name (.toString this)})
+    ([this info-type]
+     (case info-type
+       :name (.toString this)
+       nil))))
 
 (extend-type LineEvent
+  Info
+  (info
+    ([this]
+     {:type (itype this)
+      :position (frame-position this)})
+    ([this info-type]
+     (case info-type
+       :type (itype this)
+       :position (frame-position this)
+       nil)))
   Frame
   (frame-position [event]
     (.getFramePosition event))
   Type
-  (itype [control]
-    (.getType control)))
+  (itype [event]
+    (let [event-type (.getType event)]
+      (get line-event-type event-type event-type))))
+
+(defn event [line event-type ^long position]
+  (LineEvent. line (line-event-type event-type event-type) position))
 
 ;; =================== DataLine ==========================================
 
@@ -882,7 +902,7 @@
     (.getValue this))
   (value! [this! val]
     (.setValue this! val)
-    bc!))
+    this!))
 
 (defn state-label [^BooleanControl control state]
   (.getStateLabel control state))
@@ -900,7 +920,7 @@
     (.getValue this))
   (value! [this! val]
     (.setValue this! val)
-    bc!))
+    this!))
 
 (defn values [^EnumControl control]
   (.getValues control))
@@ -913,7 +933,7 @@
     (.getValue this))
   (value! [this! val]
     (.setValue this! val)
-    bc!))
+    this!))
 
 (defn maximum ^double [^FloatControl control]
   (.getMaximum control))
@@ -1060,6 +1080,18 @@
   [this w]
   (print-method (seq this) w))
 
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.LineEvent;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.LineEvent$Type;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.ReverbType;")
+  [this w]
+  (print-method (seq this) w))
+
 (defmethod print-method (Class/forName "[Ljava.lang.Object;")
   [this w]
   (print-method (seq this) w))
@@ -1105,19 +1137,17 @@
   (.write w (pr-str (info this))))
 
 (defmethod print-method Control
-  [control ^java.io.Writer w]
-  (.write w (pr-str (bean control))))
-
-
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
 
 (defmethod print-method LineEvent
-  [event ^java.io.Writer w]
-  (.write w (pr-str (bean event))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
 
 (defmethod print-method LineEvent$Type
-  [type ^java.io.Writer w]
-  (.write w (pr-str (name-key type))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
 
 (defmethod print-method ReverbType
-  [type ^java.io.Writer w]
-  (.write w (pr-str (bean type))))
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
