@@ -216,6 +216,13 @@
 ;; =========================== Line ============================================
 
 (deftype LineListenerFunction [f]
+  Info
+  (info [_]
+    {:fn f})
+  (info [_ info-type]
+   (case info-type
+     :fn f
+     nil))
   LineListener
   (update [_ event]
     (f event)))
@@ -415,6 +422,8 @@
     ([clip format data offset buffer-size]
      (.open clip ^AudioFormat format data offset buffer-size)
      clip))
+  (open? [clip]
+    (.isOpen clip))
   Frame
   (frame-length [clip]
     (.getFrameLength clip))
@@ -458,7 +467,9 @@
      line)
     ([line format buffer-size]
      (.open line ^AudioFormat format buffer-size)
-     line)))
+     line))
+  (open? [line]
+    (.isOpen line)))
 
 (defmethod write! [AudioInputStream File]
   [in out! file-type]
@@ -482,7 +493,9 @@
      line)
     ([line format buffer-size]
      (.open line ^AudioFormat format buffer-size)
-     line)))
+     line))
+  (open? [line]
+    (.isOpen line)))
 
 ;; =========================== Mixer ===========================================
 
@@ -971,6 +984,25 @@
   (.write w (pr-str (seq mixers))))
 
 
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Line;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.DataLine;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.Clip;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.SourceDataLine;")
+  [this w]
+  (print-method (seq this) w))
+
+(defmethod print-method (Class/forName "[Ljavax.sound.sampled.TargetDataLine;")
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[Ljavax.sound.sampled.AudioFormat;")
   [this w]
@@ -1008,10 +1040,38 @@
   [this w]
   (print-method (seq this) w))
 
-
 (defmethod print-method (Class/forName "[Ljava.lang.Object;")
   [this w]
   (print-method (seq this) w))
+
+(defmethod print-method LineListener
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method Line
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method DataLine
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method Port
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method Clip
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method SourceDataLine
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method TargetDataLine
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
 
 (defmethod print-method AudioFormat
   [this ^java.io.Writer w]

@@ -678,6 +678,15 @@
 ;; ============================= Sequencer ================================
 
 (deftype MetaEventListenerFunction [f ^int meta-type]
+  Info
+  (info [_]
+    {:fn f
+     :type (get meta-message-type-key meta-type meta-type)})
+  (info [_ info-type]
+    (case info-type
+      :fn f
+      :type (get meta-message-type-key meta-type meta-type)
+      nil))
   MetaEventListener
   (meta [_ message]
     (when (or (< meta-type 0) (= meta-type (.getType message)))
@@ -690,6 +699,13 @@
    (meta-listener f -1)))
 
 (deftype ControllerEventListenerFunction [f]
+  Info
+  (info [_]
+    {:fn f})
+  (info [_ info-type]
+    (case info-type
+      :fn f
+      nil))
   ControllerEventListener
   (controlChange [_ message]
     (f message)))
@@ -1518,6 +1534,14 @@
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.Track;")
   [this w]
   (print-method (seq this) w))
+
+(defmethod print-method MetaEventListener
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method ControllerEventListener
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
 
 (defmethod print-method MidiDevice$Info
   [this ^java.io.Writer w]
