@@ -18,7 +18,7 @@
                                ReceiverProvider get-receiver]]
              [core :refer [write! SoundInfoProvider Open Timing Reset Broadcast Activity Type
                            Format active? connect! micro-length division resolution
-                           properties property itype]]])
+                           properties property itype SoundSystemProcedures]]])
   (:import [clojure.lang ILookup IFn]
            java.lang.reflect.Field
            java.net.URL
@@ -65,21 +65,21 @@
    Sequencer$SyncMode/MIDI_TIME_CODE :midi-time-code
    Sequencer$SyncMode/NO_SYNC :no-sync})
 
-(def timing-type
+(def ^:const timing-type
   {:ppq Sequence/PPQ
    :smpte24 Sequence/SMPTE_24
    :smpte25 Sequence/SMPTE_25
    :smpte30 Sequence/SMPTE_30
    :smpte30drop Sequence/SMPTE_30DROP})
 
-(def timing-type-key
+(def ^:const timing-type-key
   {Sequence/PPQ :ppq
    Sequence/SMPTE_24 :smpte24
    Sequence/SMPTE_25 :smpte25
    Sequence/SMPTE_30 :smpte30
    Sequence/SMPTE_30DROP :smpte30drop})
 
-(def command-type
+(def ^:const command-type
   {:active-sensing ShortMessage/ACTIVE_SENSING
    :channel-pressure ShortMessage/CHANNEL_PRESSURE
    :continue ShortMessage/CONTINUE
@@ -101,7 +101,7 @@
    :special-system-exclusive SysexMessage/SPECIAL_SYSTEM_EXCLUSIVE
    :system-exclusive SysexMessage/SYSTEM_EXCLUSIVE})
 
-(def command-type-key
+(def ^:const command-type-key
   {ShortMessage/ACTIVE_SENSING :active-sensing
    ShortMessage/CHANNEL_PRESSURE :channel-pressure
    ShortMessage/CONTINUE :continue
@@ -121,7 +121,7 @@
    ShortMessage/TIMING_CLOCK :clock
    ShortMessage/TUNE_REQUEST :tune})
 
-(def controller-type
+(def ^:const controller-type
   {0 :bank
    1 :modulation-wheel
    2 :breath-control
@@ -195,11 +195,11 @@
    126 :poly-on-off
    127 :poly-on})
 
-(def sysex-status-key
+(def ^:const sysex-status-key
   {SysexMessage/SPECIAL_SYSTEM_EXCLUSIVE :special-system-exclusive
    SysexMessage/SYSTEM_EXCLUSIVE :system-exclusive})
 
-(def meta-message-type
+(def ^:const meta-message-type
   {:sequence-number 0x00
    :text 0x01
    :copyright-notice 0x02
@@ -216,7 +216,7 @@
    :key-signature 0x59
    :sequencer-specific 0x7F})
 
-(def meta-message-type-key
+(def ^:const meta-message-type-key
   {0x00 :sequence-number
    0x01 :text
    0x02 :copyright-notice
@@ -233,10 +233,19 @@
    0x59 :key-signature
    0x7F :sequencer-specific})
 
+(def ^:const midi-file-type
+  {:single 0
+   :multi 1
+   :collection 2})
+
+(def ^:const midi-file-type-key
+  {0 :single
+   1 :multi
+   2 :collection})
+
 ;; =========================== MidiSystem ====================================
 
 (defprotocol MidiSystemProcedures
-  (file-format [this])
   (soundbank [this])
   (device [this]))
 
@@ -259,10 +268,19 @@
   (get-sequence [sq]
     (sequence (division sq) (resolution sq) (tracks sq))))
 
-(extend-protocol MidiSystemProcedures
+(extend-protocol SoundSystemProcedures
   File
   (file-format [file]
     (MidiSystem/getMidiFileFormat file))
+  InputStream
+  (file-format [stream]
+    (MidiSystem/getMidiFileFormat stream))
+  URL
+  (file-format [url]
+    (MidiSystem/getMidiFileFormat url)))
+
+(extend-protocol MidiSystemProcedures
+  File
   (soundbank [file]
     (MidiSystem/getSoundbank file))
   InputStream
@@ -271,8 +289,6 @@
   (soundbank [stream]
     (MidiSystem/getSoundbank stream))
   URL
-  (file-format [url]
-    (MidiSystem/getMidiFileFormat url))
   (soundbank [url]
     (MidiSystem/getSoundbank url))
   MidiDeviceReceiver
@@ -770,8 +786,9 @@
 
 (defn master-sync [^Sequencer sequencer]
   (get sync-mode-key (.getMasterSyncMode sequencer)
-       (throw (ex-info "Unknown sync mode." {:mode (.getMasterSyncMode sequencer)
-                                             :available (keys sync-mode-key)}))))
+       (throw (ex-info "Unknown sync mode." {:type :sound-error
+                                             :mode (.getMasterSyncMode sequencer)
+                                             :supported (keys sync-mode-key)}))))
 
 (defn master-sync! [^Sequencer sequencer! sync]
   (.setMasterSyncMode sequencer! (get sync-mode sync sync))
@@ -782,8 +799,9 @@
 
 (defn slave-sync [^Sequencer sequencer]
   (get sync-mode-key (.getSlaveSyncMode sequencer)
-       (throw (ex-info "Unknown sync mode." {:mode (.getSlaveSyncMode sequencer)
-                                             :available (keys sync-mode-key)}))))
+       (throw (ex-info "Unknown sync mode." {:type :sound-error
+                                             :mode (.getSlaveSyncMode sequencer)
+                                             :supported (keys sync-mode-key)}))))
 
 (defn slave-sync! [^Sequencer sequencer! sync]
   (.setSlaveSyncMode sequencer! (get sync-mode sync sync))
@@ -993,13 +1011,13 @@
 (extend-type MidiFileFormat
   Info
   (info
-    ([mff]
-     (into {:type (.getType mff)}
-           (map (fn [[k v]] [(name-key k) v] ) (properties mff))))
-    ([mff info-type]
+    ([this]
+     (into {:type (itype this)}
+           (map (fn [[k v]] [(name-key k) v] ) (properties this))))
+    ([this info-type]
      (case info-type
-       :type (.getType mff)
-       (property mff (key-name info-type)))))
+       :type (itype this)
+       (property this (key-name info-type)))))
   Timing
   (micro-length [mff]
     (.getMicrosecondLength mff))
@@ -1016,7 +1034,8 @@
     (.getByteLength mff))
   Type
   (itype [mff]
-    (.getType mff)))
+    (let [mff-type (.getType mff)]
+      (get midi-file-type mff-type mff-type))))
 
 (defn midi-file-format
   ([type division resolution bytes microseconds]
@@ -1065,7 +1084,7 @@
               (bit-shift-left (bit-and (aget data 0) 0xFF) 16))
     4 (.getInt (ByteBuffer/wrap data) 0)
     8 (.getLong (ByteBuffer/wrap data) 0)
-    (throw (ex-info "Not an integer data buffer." {:type :midi-error
+    (throw (ex-info "Not an integer data buffer." {:type :sound-error
                                                    :length (alength data) :supported #{1 2 4 8}}))))
 
 (defn decode-smpte [^bytes data]

@@ -12,7 +12,7 @@
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support simple-name]]
              [core :refer [write! SoundInfoProvider Open Timing Reset Broadcast Activity Type
-                           Format get-format]]])
+                           Format get-format SoundSystemProcedures file-format]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [javax.sound.sampled AudioSystem AudioFormat AudioInputStream  AudioPermission
@@ -26,7 +26,6 @@
   (matches? [this other]))
 
 (defprotocol AudioSystemProcedures
-  (afile-format [this])
   (audio-input-stream [this] [target-format source-stream])
   (encodings [this] [target-format source-stream])
   (convertible? [target source]))
@@ -44,7 +43,7 @@
 
 ;; ===================== Keyword coding ================================================
 
-(def global-const
+(def ^:const global-const
   {:not-specified AudioSystem/NOT_SPECIFIED})
 
 (def port-info
@@ -60,7 +59,7 @@
    :compact-disc Port$Info/COMPACT_DISC
    :cd Port$Info/COMPACT_DISC})
 
-(def line-key-class
+(def ^:const line-key-class
   {:target TargetDataLine
    :target-data-line TargetDataLine
    :source SourceDataLine
@@ -71,7 +70,7 @@
    :line Line
    :data-line DataLine})
 
-(def line-class-key
+(def ^:const line-class-key
   {TargetDataLine :target
    SourceDataLine :source
    Clip :clip
@@ -91,7 +90,7 @@
    :float AudioFormat$Encoding/PCM_FLOAT
    :byte AudioFormat$Encoding/PCM_SIGNED})
 
-(def big-endian?
+(def ^:const big-endian?
   {:big-endian true
    :big true
    true true
@@ -99,7 +98,7 @@
    :little false
    false false})
 
-(def signed?
+(def ^:const signed?
   {:signed true
    true true
    :unsigned false
@@ -112,7 +111,7 @@
    :snd AudioFileFormat$Type/SND
    :wave AudioFileFormat$Type/WAVE})
 
-(def control-type
+(def ^:const control-type
   {:apply-reverb BooleanControl$Type/APPLY_REVERB
    :reverb EnumControl$Type/REVERB
    :mute BooleanControl$Type/MUTE
@@ -128,14 +127,13 @@
    :vol FloatControl$Type/VOLUME})
 
 
-(def line-event-type
+(def ^:const line-event-type
   {:close LineEvent$Type/CLOSE
    :open LineEvent$Type/OPEN
    :start LineEvent$Type/START
    :stop LineEvent$Type/STOP})
 
 ;; =========================== AudioSystem ====================================
-
 (extend-protocol AudioSystemProcedures
   File
   (afile-format [file]
@@ -150,6 +148,31 @@
   URL
   (afile-format [url]
     (AudioSystem/getAudioFileFormat url))
+  (audio-input-stream [url]
+    (AudioSystem/getAudioInputStream url))
+  AudioFormat
+  (audio-input-stream [target source]
+    (AudioSystem/getAudioInputStream target ^AudioInputStream source))
+  (encodings [source]
+    (AudioSystem/getTargetEncodings source))
+  (convertible? [target source]
+    (AudioSystem/isConversionSupported target ^AudioFormat source))
+  AudioFormat$Encoding
+  (audio-input-stream [target source]
+    (AudioSystem/getAudioInputStream target ^AudioInputStream source))
+  (encodings [source]
+    (AudioSystem/getTargetEncodings source))
+  (convertible? [target source]
+    (AudioSystem/isConversionSupported target ^AudioFormat source)))
+
+(extend-protocol AudioSystemProcedures
+  File
+  (audio-input-stream [file]
+    (AudioSystem/getAudioInputStream file))
+  InputStream
+  (audio-input-stream [stream]
+    (AudioSystem/getAudioInputStream stream))
+  URL
   (audio-input-stream [url]
     (AudioSystem/getAudioInputStream url))
   AudioFormat
@@ -645,17 +668,20 @@
 (defn extension [^AudioFileFormat$Type t]
   (.getExtension t))
 
-(defn aff-type
+(defn file-format-type
   ([aff]
    (if (instance? AudioFileFormat aff)
      (.getType ^AudioFileFormat aff)
-     (audio-file-format-type aff)))
+     (get audio-file-format-type aff (throw (ex-info "Unknown audio file type."
+                                                     {:type :sound-error
+                                                      :requested aff
+                                                      :supported (keys audio-file-format-type)})))))
   ([name extension]
    (AudioFileFormat$Type. name extension)))
 
 (defn audio-file-format
   ([this]
-   (afile-format this))
+   (file-format this))
   ([type ^long byte-length format ^long frame-length]
    (AudioFileFormat. (get audio-file-format-type type type) byte-length format frame-length))
   ([type format ^long frame-length]

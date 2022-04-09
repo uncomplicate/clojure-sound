@@ -16,6 +16,9 @@
             MidiMessage Patch Sequence Sequencer$SyncMode ShortMessage SoundbankResource
             SysexMessage Track VoiceStatus]))
 
+(defprotocol SoundSystemProcedures
+  (file-format [this]))
+
 (defprotocol SoundInfoProvider ;;TODO rename
   (sound-info [this]))
 
@@ -69,13 +72,13 @@
   (throw (ex-info "Unsupported connection between these endpoints." {:type :sound-error :args args})))
 
 (defmethod print-method (Class/forName "[I")
-  [arr ^java.io.Writer w]
-  (.write w (pr-str (seq arr))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[B")
-  [arr ^java.io.Writer w]
-  (.write w (pr-str (seq arr))))
+  [this w]
+  (print-method (seq this) w))
 
 (defmethod print-method (Class/forName "[J")
-  [arr ^java.io.Writer w]
-  (.write w (pr-str (seq arr))))
+  [this w]
+  (print-method (seq this) w))
