@@ -23,6 +23,9 @@
 (defprotocol ReceiverProvider
   (get-receiver [this]))
 
+(defprotocol GetFormat
+  (get-format [this]))
+
 (defn name-key [s]
   (-> (str/trim s)
       (str/replace " " "")

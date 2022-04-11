@@ -50,7 +50,6 @@
   (itype [this]))
 
 (defprotocol Format
-  (get-format [this])
   (property [this key])
   (properties [this])
   (byte-length [this]))

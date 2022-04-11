@@ -3,8 +3,7 @@
             [uncomplicate.commons.core :refer [close! info]]
             [uncomplicate.clojure-sound
              [core :refer :all]
-             [midi :refer :all]])
-  (:import [javax.sound.midi MidiUnavailableException]))
+             [midi :refer :all]]))
 
 (facts "Obtaining Default Devices."
        (info (sequencer) :name) => "Real Time Sequencer"

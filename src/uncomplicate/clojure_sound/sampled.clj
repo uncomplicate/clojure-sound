@@ -10,9 +10,9 @@
   (:require [clojure.walk :refer [stringify-keys]]
             [uncomplicate.commons.core :refer [Releaseable close! Info info]]
             [uncomplicate.clojure-sound
-             [internal :refer [name-key Support simple-name]]
+             [internal :refer [name-key Support simple-name GetFormat  get-format]]
              [core :refer [write! SoundInfoProvider Open Timing Reset Broadcast Activity Type
-                           Format get-format SoundSystemProcedures file-format itype properties
+                           Format SoundSystemProcedures file-format itype properties
                            sound-info]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
@@ -236,28 +236,25 @@
   Info
   (info
     ([this]
-     {:class (.getLineClass (.getLineInfo this))
+     {:class (simple-name (.getLineClass (.getLineInfo this)))
       :status (if (.isOpen this) :open :closed)})
     ([this info-type]
      (case info-type
-       :class (.getLineClass (.getLineInfo this))
+       :class (simple-name (.getLineClass (.getLineInfo this)))
        :status (if (.isOpen this) :open :closed))))
   Releaseable
   (release [this]
     (close! this)
     true)
   SoundInfoProvider
-  (sound-info [line]
-    (.getLineInfo this))
-  Open
-  (open! [line]
-    (.open line)
-    line)
-  (open? [line]
-    (.isOpen line))
-  SoundInfoProvider
   (sound-info [this]
     (.getLineInfo this))
+  Open
+  (open! [line!]
+    (.open line!)
+    line!)
+  (open? [line]
+    (.isOpen line))
   Broadcast
   (listen! [line! listener]
     (let [listener (if (instance? LineListener listener)
@@ -269,15 +266,23 @@
     (.removeLineListener line! listener)
     line!))
 
-(extend-protocol SoundInfoProvider
-  java.lang.Class
+(extend-type java.lang.Class
+  SoundInfoProvider
   (sound-info [c]
-    (Line$Info. c))
-  Keyword
+    (Line$Info. c)))
+
+(extend-type Keyword
+  SoundInfoProvider
   (sound-info [kw]
     (get port-info kw (ex-info "Unknown port info." {:type :sound-error
                                                      :requested kw
-                                                     :supported (keys port-info)}))))
+                                                     :supported (keys port-info)})))
+  Support
+  (supported
+    ([kw]
+     (AudioSystem/isLineSupported (sound-info kw)))
+    ([kw mxr]
+     (.isLineSupported ^Mixer mxr (sound-info kw)))))
 
 (extend-type Line$Info
   Info
@@ -295,8 +300,11 @@
   (matches? [this other]
     (.matches this other))
   Support
-  (supported [info]
-    (AudioSystem/isLineSupported (get port-info info info))))
+  (supported
+    ([info]
+     (AudioSystem/isLineSupported info))
+    ([info mxr]
+     (.isLineSupported ^Mixer mxr info))))
 
 (extend-type Port$Info
   Info
@@ -334,7 +342,7 @@
    (.getControl line (get control-type ctrl-type ctrl-type))))
 
 (defn line-class [info]
-  (.getLineClass ^Line$Info (get port-info info info)))
+  (.getLineClass ^Line$Info (sound-info info)))
 
 (extend-type LineEvent$Type
   Info
@@ -374,19 +382,19 @@
   Info
   (info
     ([this]
-     {:class (.getLineClass (.getLineInfo this))
+     {:class (simple-name (.getLineClass (.getLineInfo this)))
       :status (if (.isOpen this) :open :closed)
       :level (.getLevel this)
       :active (.isActive this)
       :running (.isRunning this)})
     ([this info-type]
      (case info-type
-       :class (.getLineClass (.getLineInfo this))
+       :class (simple-name (.getLineClass (.getLineInfo this)))
        :status (if (.isOpen this) :open :closed)
        :level (.getLevel this)
        :active (.isActive this)
        :running (.isRunning this))))
-  Format
+  GetFormat
   (get-format [line]
     (.getFormat line))
   Frame
@@ -438,12 +446,20 @@
 (extend-type Clip
   Open
   (open!
-    ([clip stream]
-     (.open clip ^AudioInputStream stream)
-     clip)
-    ([clip format data offset buffer-size]
-     (.open clip ^AudioFormat format data offset buffer-size)
-     clip))
+    ([clip!]
+     (try
+       (.open clip!)
+       (catch IllegalArgumentException e
+         (ex-info "Clip does not support 1-argument open!."
+                  {:type :sound-error
+                   :cause e})))
+     clip!)
+    ([clip! stream]
+     (.open clip! ^AudioInputStream stream)
+     clip!)
+    ([clip! format data offset buffer-size]
+     (.open clip! ^AudioFormat format data offset buffer-size)
+     clip!))
   (open? [clip]
     (.isOpen clip))
   Frame
@@ -484,12 +500,15 @@
 (extend-type SourceDataLine
   Open
   (open!
-    ([line format]
-     (.open line ^AudioFormat format)
-     line)
-    ([line format buffer-size]
-     (.open line ^AudioFormat format buffer-size)
-     line))
+    ([line!]
+     (.open line!)
+     line!)
+    ([line! format]
+     (.open line! ^AudioFormat format)
+     line!)
+    ([line! format buffer-size]
+     (.open line! ^AudioFormat format buffer-size)
+     line!))
   (open? [line]
     (.isOpen line)))
 
@@ -510,12 +529,15 @@
 (extend-type TargetDataLine
   Open
   (open!
-    ([line format]
-     (.open line ^AudioFormat format)
-     line)
-    ([line format buffer-size]
-     (.open line ^AudioFormat format buffer-size)
-     line))
+    ([line!]
+     (.open line!)
+     line!)
+    ([line! format]
+     (.open line! ^AudioFormat format)
+     line!)
+    ([line! format buffer-size]
+     (.open line! ^AudioFormat format buffer-size)
+     line!))
   (open? [line]
     (.isOpen line)))
 
@@ -557,7 +579,7 @@
     (.getMixerInfo mixer))
   Support
   (supported [this info]
-    (.isLineSupported this (get port-info info info))))
+    (.isLineSupported this (sound-info info))))
 
 (defn mixer-info
   ([]
@@ -572,43 +594,37 @@
    (AudioSystem/getMixer info)))
 
 (defn max-lines [^Mixer mixer info]
-  (.getMaxLines mixer (get port-info info info)))
+  (.getMaxLines mixer (sound-info info)))
 
 (defn line
   ([obj]
    (if (instance? LineEvent obj)
      (.getLine ^LineEvent obj)
-     (AudioSystem/getLine (get port-info obj obj))))
+     (AudioSystem/getLine (sound-info obj))))
   ([^Mixer mixer info]
-   (.getLine mixer (get port-info info info))))
+   (.getLine mixer (sound-info info))))
 
 (defn source-info
   ([this]
    (if (instance? Line$Info this)
-     (AudioSystem/getSourceLineInfo (get port-info this this))
+     (AudioSystem/getSourceLineInfo (sound-info this))
      (.getSourceLineInfo ^Mixer this)))
   ([^Mixer mixer info]
-   (.getSourceLineInfo mixer (get port-info info info))))
+   (.getSourceLineInfo mixer (sound-info info))))
 
-(defn source
-  ([^Mixer mixer]
-   (.getSourceLines mixer))
-  ([^Mixer mixer info]
-   (map (partial line mixer) (source-info mixer info))))
+(defn source [^Mixer mixer]
+  (.getSourceLines mixer))
 
 (defn target-info
   ([this]
    (if (instance? Line$Info this)
-     (AudioSystem/getTargetLineInfo (get port-info this this))
+     (AudioSystem/getTargetLineInfo (sound-info this))
      (.getTargetLineInfo ^Mixer this)))
   ([^Mixer mixer info]
-   (.getTargetLineInfo mixer (get port-info info info))))
+   (.getTargetLineInfo mixer (sound-info info))))
 
-(defn target
-  ([^Mixer mixer]
-   (.getTargetLines mixer))
-  ([^Mixer mixer info]
-   (map (partial line mixer) (target-info mixer info))))
+(defn target [^Mixer mixer]
+  (.getTargetLines mixer))
 
 (defn sync-supported?
   ([mixer lines]
@@ -661,20 +677,20 @@
   Info
   (info
     ([this]
-     {:name (.toString this)})
+     {:name (name-key (.toString this))})
     ([this info-type]
      (case info-type
-       :name (.toString this)))))
+       :name (name-key (.toString this))))))
 
 (extend-type AudioFormat
   Info
   (info
     ([this]
-     (into {:encoding (.toString (.getEncoding this))}
+     (into {:encoding (name-key (.toString (.getEncoding this)))}
            (map (fn [[k v]] [(name-key k) v]) (properties this))))
     ([this info-type]
      (case info-type
-       :encoding (.toString (.getEncoding this))
+       :encoding (name-key (.toString (.getEncoding this)))
        (map (fn [[k v]] [(name-key k) v]) (properties this)))))
   Support
   (supported [af line]
@@ -686,21 +702,14 @@
   (property [af key]
     (.getProperty af (name key)))
   (properties [af]
-    (.properties af)))
+    (.properties af))
+  GetFormat
+  (get-format [this]
+    this))
 
 (defn audio-format
   ([from]
-   (if (map? from)
-     (let [{:keys [encoding sample-rate sample-size-bits channels
-                   frame-size frame-rate signed endian properties]
-            :or {channels 1 sample-size-bits 16 endian :little-endian signed :signed}} from]
-       (if encoding
-         (if properties
-           (audio-format encoding sample-rate sample-size-bits channels frame-size
-                         frame-rate endian properties)
-           (audio-format encoding sample-rate sample-size-bits channels frame-size frame-rate))
-         (audio-format sample-rate sample-size-bits channels signed endian)))
-     (get-format from)))
+   (get-format from))
   ([sample-rate sample-size-bits]
    (audio-format sample-rate sample-size-bits 1 :signed :little-endian))
   ([sample-rate sample-size-bits channels]
@@ -716,6 +725,24 @@
    (AudioFormat. (get audio-encoding encoding encoding)
                  sample-rate sample-size-bits channels frame-size frame-rate
                  (big-endian? endian) (stringify-keys properties))))
+
+(extend-type java.util.Map
+  Format
+  (property [this key]
+    (.get this (name key)))
+  (properties [this]
+    this)
+  GetFormat
+  (get-format [from]
+    (let [{:keys [encoding sample-rate sample-size-bits channels
+                  frame-size frame-rate signed endian properties]
+           :or {channels 1 sample-size-bits 16 endian :little-endian signed :signed}} from]
+      (if encoding
+        (if properties
+          (audio-format encoding sample-rate sample-size-bits channels frame-size
+                        frame-rate endian properties)
+          (audio-format encoding sample-rate sample-size-bits channels frame-size frame-rate))
+        (audio-format sample-rate sample-size-bits channels signed endian)))))
 
 (defn encoding [this]
   (if (instance? AudioFormat this)
@@ -784,9 +811,10 @@
   Type
   (itype [aff]
     (.getType aff))
-  Format
+  GetFormat
   (get-format [aff]
     (.getFormat aff))
+  Format
   (property [aff key]
     (.getProperty aff (name key)))
   (properties [aff]
@@ -851,7 +879,7 @@
   (release [this]
     (.close this)
     true)
-  Format
+  GetFormat
   (get-format [this]
     (.getFormat this))
   Frame
@@ -1105,6 +1133,10 @@
   (.write w (pr-str (info this))))
 
 (defmethod print-method Line$Info
+  [this ^java.io.Writer w]
+  (.write w (pr-str (info this))))
+
+(defmethod print-method Mixer$Info
   [this ^java.io.Writer w]
   (.write w (pr-str (info this))))
 
