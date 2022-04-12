@@ -266,7 +266,10 @@
     (.getSequence sequencer))
   Sequence
   (get-sequence [sq]
-    (sequence (division sq) (resolution sq) (tracks sq))))
+    (sequence (division sq) (resolution sq) (tracks sq)))
+  nil
+  (ge-sequence [_]
+    (throw (ex-info "nil is not allowed as a sequence source."))))
 
 (extend-protocol SoundSystemProcedures
   File

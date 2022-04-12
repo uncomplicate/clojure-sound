@@ -200,8 +200,11 @@
   (convertible? [target source]
     (AudioSystem/isConversionSupported target ^AudioFormat source)))
 
-(defn audio-file-types [^AudioInputStream stream]
-  (AudioSystem/getAudioFileTypes stream))
+(defn audio-file-types
+  ([^AudioInputStream stream]
+   (AudioSystem/getAudioFileTypes stream))
+  ([]
+   (AudioSystem/getAudioFileTypes)))
 
 (defn target-data-line
   ([^AudioFormat format]
@@ -503,8 +506,10 @@
     ([line!]
      (.open line!)
      line!)
-    ([line! format]
-     (.open line! ^AudioFormat format)
+    ([line! format-or-buffer-size]
+     (if (number? format-or-buffer-size)
+       (.open line! ^AudioFormat (get-format line!) format-or-buffer-size)
+       (.open line! ^AudioFormat format-or-buffer-size))
      line!)
     ([line! format buffer-size]
      (.open line! ^AudioFormat format buffer-size)
@@ -520,9 +525,17 @@
   [in out! file-type]
   (AudioSystem/write ^AudioInputStream in ^AudioFileFormat$Type file-type ^OutputStream out!))
 
-(defmethod write! [(Class/forName "[B") SourceDataLine]
+(defmethod write! [(Class/forName "[B") SourceDataLine Number Number]
   [byte-arr line! offset length]
   (.write ^SourceDataLine line! byte-arr offset length))
+
+(defmethod write! [(Class/forName "[B") SourceDataLine Number]
+  [^bytes byte-arr line! ^long offset]
+ (.write ^SourceDataLine line! byte-arr offset (- (long (alength byte-arr)) offset)))
+
+(defmethod write! [(Class/forName "[B") SourceDataLine]
+  [^bytes byte-arr line!]
+  (.write ^SourceDataLine line! byte-arr 0 (alength byte-arr)))
 
 ;; ====================== TargetDataLine =================================================
 
@@ -532,8 +545,10 @@
     ([line!]
      (.open line!)
      line!)
-    ([line! format]
-     (.open line! ^AudioFormat format)
+    ([line! format-or-buffer-size]
+     (if (number? format-or-buffer-size)
+       (.open line! ^AudioFormat (get-format line!) format-or-buffer-size)
+       (.open line! ^AudioFormat format-or-buffer-size))
      line!)
     ([line! format buffer-size]
      (.open line! ^AudioFormat format buffer-size)
