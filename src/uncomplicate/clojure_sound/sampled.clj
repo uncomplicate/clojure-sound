@@ -684,8 +684,11 @@
   (supported [lines mixer]
     (sync-supported? mixer (into-array Line lines) true)))
 
-(defn sync! [^Mixer mixer! lines maintain-sync?]
-  (.synchronize mixer! (if (sequential? lines) (into-array Line lines) lines) maintain-sync?))
+(defn sync!
+  ([^Mixer mixer! lines maintain-sync?]
+   (.synchronize mixer! (if (sequential? lines) (into-array Line lines) lines) maintain-sync?))
+  ([mixer! lines]
+   (sync! mixer! lines true)))
 
 (defn unsync! [^Mixer mixer! lines]
   (.unsynchronize mixer! (if (sequential? lines) (into-array Line lines) lines)))

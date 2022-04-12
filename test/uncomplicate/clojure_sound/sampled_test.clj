@@ -109,3 +109,17 @@
            (open! clip noise) => clip
            (start! clip) => clip
            @finished?)))
+
+(facts "Synchronyzing audio on multiple lines."
+       (with-release [noise (audio-input-stream (clojure.java.io/resource "Noise.wav"))
+                      noise-format (audio-format noise)
+                      mxr (first (filter #(includes? (info % :name) "[default]") (mixer)))
+                      clip1 (line mxr (line-info :clip noise-format))
+                      clip2 (line mxr (line-info :clip noise-format))
+                      finished? (promise)]
+         (listen! clip1 (partial deliver finished?) :stop)
+         (supported? mxr [clip1 clip2]) => true
+         (sync! mxr [clip1 clip2]) => mxr
+         (open! clip1 noise) => clip
+         (start! clip1) => clip
+         @finished?))
