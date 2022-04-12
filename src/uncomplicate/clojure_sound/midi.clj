@@ -695,11 +695,31 @@
     (when (or (< meta-type 0) (= meta-type (.getType message)))
       (f message))))
 
+(deftype MetaEventListenerWrapper [^MetaEventListener f ^int meta-type]
+  Info
+  (info [_]
+    {:fn f
+     :type (get meta-message-type-key meta-type meta-type)})
+  (info [_ info-type]
+    (case info-type
+      :fn f
+      :type (get meta-message-type-key meta-type meta-type)
+      nil))
+  MetaEventListener
+  (meta [_ message]
+    (when (or (< meta-type 0) (= meta-type (.getType message)))
+      (.meta f message))))
+
 (defn meta-listener
   ([meta-type f]
-   (->MetaEventListenerFunction f (get meta-message-type meta-type meta-type)))
+   (let [meta-type (get meta-message-type meta-type meta-type)]
+     (if (instance? MetaEventListener f)
+       (->MetaEventListenerWrapper f meta-type)
+       (->MetaEventListenerFunction f meta-type))))
   ([f]
-   (meta-listener f -1)))
+   (if (instance? MetaEventListener f)
+     f
+     (meta-listener f -1))))
 
 (deftype ControllerEventListenerFunction [f]
   Info
@@ -714,7 +734,9 @@
     (f message)))
 
 (defn ctrl-listener [f]
-  (->ControllerEventListenerFunction f))
+  (if (instance? ControllerEventListener f)
+    f
+    (->ControllerEventListenerFunction f)))
 
 (extend-type Sequencer
   Broadcast

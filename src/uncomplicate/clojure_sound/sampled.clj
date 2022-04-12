@@ -220,7 +220,7 @@
 
 ;; =========================== Line ============================================
 
-(deftype LineListenerFunction [f]
+(deftype LineListenerFunction [f match-event?]
   Info
   (info [_]
     {:fn f})
@@ -230,10 +230,35 @@
      nil))
   LineListener
   (update [_ event]
-    (f event)))
+    (when (match-event? (.getType event))
+      (f event))))
 
-(defn line-listener [f]
-  (->LineListenerFunction f))
+(deftype LineListenerWrapper [^LineListener f match-event?]
+  Info
+  (info [_]
+    {:fn f})
+  (info [_ info-type]
+    (case info-type
+      :fn f
+      nil))
+  LineListener
+  (update [_ event]
+    (when (match-event? (.getType event))
+      (.update f event))))
+
+(defn line-listener
+  ([selection f]
+   (let [selection (cond (seqable? selection)
+                         (apply hash-set (map #(get line-event-type % %) selection))
+                         selection (partial = (get line-event-type selection selection))
+                         :default (constantly true))]
+     (if (instance? LineListener f)
+       (->LineListenerWrapper f selection)
+       (->LineListenerFunction f selection))))
+  ([f]
+   (if (instance? LineListener f)
+     f
+     (->LineListenerFunction f (constantly true)))))
 
 (extend-type Line
   Info
@@ -259,12 +284,15 @@
   (open? [line]
     (.isOpen line))
   Broadcast
-  (listen! [line! listener]
-    (let [listener (if (instance? LineListener listener)
-                     listener
-                     (line-listener listener))]
-      (.addLineListener line! listener)
-      listener))
+  (listen!
+    ([line! listener]
+     (let [listener (line-listener listener)]
+       (.addLineListener line! (line-listener listener))
+       listener))
+    ([line! listener selection]
+     (let [listener (line-listener selection listener)]
+       (.addLineListener line! (line-listener listener))
+       listener)))
   (ignore! [line! listener]
     (.removeLineListener line! listener)
     line!))

@@ -100,3 +100,12 @@
          (drain! src) => src
          (flush! src) => src
          (close! src)))
+
+(facts "Monitoring a line's status."
+       (with-release [noise (audio-input-stream (clojure.java.io/resource "Noise.wav"))
+                      clip (line (line-info :clip (audio-format noise)))]
+         (let [finished? (promise)]
+           (listen! clip (partial deliver finished?) :stop)
+           (open! clip noise) => clip
+           (start! clip) => clip
+           @finished?)))
