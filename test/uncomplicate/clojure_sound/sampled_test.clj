@@ -110,7 +110,7 @@
            (start! clip) => clip
            @finished?)))
 
-(facts "Synchronyzing audio on multiple lines."
+(facts "Synchronizing audio on multiple lines."
        (with-release [noise (audio-input-stream (clojure.java.io/resource "Noise.wav"))
                       noise-format (audio-format noise)
                       mxr (first (filter #(includes? (info % :name) "[default]") (mixer)))
@@ -118,8 +118,27 @@
                       clip2 (line mxr (line-info :clip noise-format))
                       finished? (promise)]
          (listen! clip1 (partial deliver finished?) :stop)
-         (supported? mxr [clip1 clip2]) => true
-         (sync! mxr [clip1 clip2]) => mxr
-         (open! clip1 noise) => clip
-         (start! clip1) => clip
+         (supported? mxr [clip1 clip2]) => false
+         (sync-supported? mxr [clip1 clip2]) => false
+         ;;(sync! mxr [clip1 clip2]) => mxr
+         (open! clip1 noise) => clip1
+         (open! clip2 noise) => clip2
+         (start! clip1) => clip1
+         (start! clip2) => clip2
+         @finished?))
+
+(facts "Capturing audio."
+       (with-release [mxr (first (filter #(includes? (info % :name) "[default]") (mixer)))
+                      tgt (line mxr (line-info :target (audio-format 44100.0 16 2)))
+                      src (line (line-info :source (audio-format 44100.0 16 2)))
+                      finished? (promise)]
+         (listen! tgt (partial deliver finished?) :stop)
+         (open! tgt) => tgt
+         (flush! tgt) => tgt
+         (start! tgt) => tgt
+         (read! tgt (byte-array 100)) => 100
+         (seq (doto (byte-array (repeat 8 99))
+                (read! tgt 2 4))) => [99 99 0 0 0 0 99 99]
+         (stop! tgt) => tgt
+         (drain! tgt) => tgt
          @finished?))

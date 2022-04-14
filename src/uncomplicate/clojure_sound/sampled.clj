@@ -11,7 +11,7 @@
             [uncomplicate.commons.core :refer [Releaseable close! Info info]]
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support simple-name GetFormat  get-format]]
-             [core :refer [write! SoundInfoProvider Open Timing Reset Broadcast Activity Type
+             [core :refer [write! read! SoundInfoProvider Open Timing Reset Broadcast Activity Type
                            Format SoundSystemProcedures file-format itype properties
                            sound-info]]])
   (:import java.net.URL
@@ -546,24 +546,24 @@
     (.isOpen line)))
 
 (defmethod write! [AudioInputStream File]
-  [in out! file-type]
-  (AudioSystem/write ^AudioInputStream in ^AudioFileFormat$Type file-type ^File out!))
+  [^AudioInputStream in ^File out! ^AudioFileFormat$Type file-type]
+  (AudioSystem/write in file-type out!))
 
 (defmethod write! [AudioInputStream OutputStream]
-  [in out! file-type]
-  (AudioSystem/write ^AudioInputStream in ^AudioFileFormat$Type file-type ^OutputStream out!))
+  [^AudioInputStream in ^OutputStream out! ^AudioFileFormat$Type file-type]
+  (AudioSystem/write in file-type out!))
 
 (defmethod write! [(Class/forName "[B") SourceDataLine Number Number]
-  [byte-arr line! offset length]
-  (.write ^SourceDataLine line! byte-arr offset length))
+  [byte-arr ^SourceDataLine line! offset length]
+  (.write line! byte-arr offset length))
 
 (defmethod write! [(Class/forName "[B") SourceDataLine Number]
-  [^bytes byte-arr line! ^long offset]
- (.write ^SourceDataLine line! byte-arr offset (- (long (alength byte-arr)) offset)))
+  [^bytes byte-arr ^SourceDataLine line! ^long offset]
+ (.write line! byte-arr offset (- (long (alength byte-arr)) offset)))
 
 (defmethod write! [(Class/forName "[B") SourceDataLine]
-  [^bytes byte-arr line!]
-  (.write ^SourceDataLine line! byte-arr 0 (alength byte-arr)))
+  [^bytes byte-arr ^SourceDataLine line!]
+  (.write line! byte-arr 0 (alength byte-arr)))
 
 ;; ====================== TargetDataLine =================================================
 
@@ -897,13 +897,58 @@
 (defn mark! [^InputStream stream! ^long read-limit]
   (.mark stream! read-limit))
 
-(defn read!
-  (^long [^InputStream stream]
-   (.read stream))
-  (^long [^InputStream stream ^bytes array!]
-   (.read stream array!))
-  (^long [^InputStream stream ^bytes array! ^long offset, ^long length]
-   (.read stream array! offset length)))
+(defmethod read! [InputStream]
+  [^InputStream stream]
+  (.read stream))
+
+(defmethod read! [InputStream (Class/forName "[B")]
+  [^InputStream stream array!]
+  (.read stream array!))
+
+(defmethod read! [InputStream (Class/forName "[B") Number Number]
+  [^InputStream stream array! offset length]
+  (.read stream array! offset length))
+
+(defmethod read! [InputStream (Class/forName "[B") Number]
+  [^InputStream stream ^bytes array! ^long offset]
+  (.read stream array! offset (- (long (alength array!)) offset)))
+
+(defmethod read! [(Class/forName "[B") InputStream]
+  [array! ^InputStream stream]
+  (.read stream array!))
+
+(defmethod read! [(Class/forName "[B") InputStream Number Number]
+  [array! ^InputStream stream offset length]
+  (.read stream array! offset length))
+
+(defmethod read! [(Class/forName "[B") InputStream Number]
+  [^bytes array! ^InputStream stream ^long offset]
+  (.read stream array! offset (- (long (alength array!)) offset)))
+
+(defmethod read! [TargetDataLine (Class/forName "[B") Number Number]
+  [^TargetDataLine line ^bytes array! offset length]
+  (.read line array! offset length))
+
+(defmethod read! [TargetDataLine (Class/forName "[B") Number]
+  [^TargetDataLine line ^bytes array! ^long offset]
+  (.read line array! offset (- (long (alength array!)) offset)))
+
+(defmethod read! [TargetDataLine (Class/forName "[B")]
+  [^TargetDataLine line ^bytes array!]
+  (.read line array! 0 (long (alength array!))))
+
+(defmethod read! [(Class/forName "[B") TargetDataLine Number Number]
+  [^bytes array! ^TargetDataLine line offset length]
+  (.read line array! offset length))
+
+(defmethod read! [(Class/forName "[B") TargetDataLine Number]
+  [^bytes array! ^TargetDataLine line ^long offset]
+  (.read line array! offset (- (long (alength array!)) offset)))
+
+(defmethod read! [(Class/forName "[B") TargetDataLine]
+  [^bytes array! ^TargetDataLine line]
+  (.read line array! 0 (long (alength array!))))
+
 
 (defn skip! [^InputStream stream! ^long n]
   (.skip stream! n))

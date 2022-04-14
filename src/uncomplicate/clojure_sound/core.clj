@@ -65,6 +65,11 @@
 (defmethod write! :default [& args]
   (throw (ex-info "Unsupported write request." {:type :sound-error :args args})))
 
+(defmulti read! (fn [& args] (mapv class args)))
+
+(defmethod read! :default [& args]
+  (throw (ex-info "Unsupported read request." {:type :sound-error :args args})))
+
 (defmulti connect! (fn [& args] (mapv class args)))
 
 (defmethod connect! :default [& args]
