@@ -9,7 +9,6 @@
                  [uncomplicate/commons "0.13.0"]]
   :profiles {:dev {:plugins [[lein-midje "3.2.1"]
                              [lein-codox "0.10.7"]]
-                   :resource-paths ["resources"]
                    :global-vars {*warn-on-reflection* true
                                  *assert* false
                                  *unchecked-math* :warn-on-boxed
@@ -19,4 +18,6 @@
                    :codox {:metadata {:doc/format :markdown}
                            :source-uri "http://github.com/uncomplicate/clojure_sound/blob/master/{filepath}#L{line}"
                            :themes [:rdash]
-                           :output-path "docs/codox"}}})
+                           :output-path "docs/codox"}}}
+
+  :test-paths ["test/clojure" "test/resources"])
