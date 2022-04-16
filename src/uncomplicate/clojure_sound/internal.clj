@@ -7,7 +7,8 @@
 ;;   You must not remove this notice, or any other, from this software.
 
 (ns uncomplicate.clojure-sound.internal
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [uncomplicate.commons.core :refer [Info info]]))
 
 (defprotocol Support
   (supported [feature] [feature object]))
@@ -28,7 +29,7 @@
 
 (defn name-key [s]
   (-> (str/trim s)
-      (str/replace " " "")
+      (str/replace " " "-")
       str/lower-case
       (str/replace "_" "-")
       keyword))
@@ -44,3 +45,12 @@
 
 (defn simple-name [^Class class]
   (.getSimpleName class))
+
+(defmacro extend-array-info [array-type]
+  `(extend-protocol Info
+     ~array-type
+     (info
+       ([this#]
+        (map info this#))
+       ([this# info-type#]
+        (map #(info % info-type#) this#)))))

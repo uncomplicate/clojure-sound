@@ -15,7 +15,7 @@
             [uncomplicate.clojure-sound
              [internal :refer [name-key Support SequenceSource set-sequence get-sequence
                                Load load-instruments unload-instruments simple-name key-name
-                               ReceiverProvider get-receiver]]
+                               ReceiverProvider get-receiver extend-array-info]]
              [core :refer [write! SoundInfoProvider Open Timing Reset Broadcast Activity Type
                            Format active? connect! micro-length division resolution
                            properties property itype SoundSystemProcedures]]])
@@ -1482,6 +1482,28 @@
   (active? [status]
     (.active status)))
 
+;; =================== Sequential info for sampled arrays ==============================
+
+(extend-array-info (Class/forName "[Ljavax.sound.midi.MidiDevice$Info;") )
+(extend-array-info (Class/forName "[Ljavax.sound.midi.MidiDevice;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.MidiChannel;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.Receiver;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.Transmitter;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.Soundbank;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.SoundbankResource;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.Instrument;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.Patch;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.MidiFileFormat;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.Sequencer$SyncMode;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.Sequence;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.VoiceStatus;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.MidiEvent;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.MidiMessage;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.MetaMessage;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.ShortMessage;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.SysexMessage;"))
+(extend-array-info (Class/forName "[Ljavax.sound.midi.Track;"))
+
 ;; =================== User friendly printing ==========================================
 
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.MidiDevice$Info;")
@@ -1532,7 +1554,6 @@
   [this w]
   (print-method (seq this) w))
 
-
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.VoiceStatus;")
   [this w]
   (print-method (seq this) w))
@@ -1548,6 +1569,7 @@
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.MetaMessage;")
   [this w]
   (print-method (seq this) w))
+
 (defmethod print-method (Class/forName "[Ljavax.sound.midi.ShortMessage;")
   [this w]
   (print-method (seq this) w))

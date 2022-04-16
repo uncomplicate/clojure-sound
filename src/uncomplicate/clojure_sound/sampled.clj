@@ -10,7 +10,8 @@
   (:require [clojure.walk :refer [stringify-keys]]
             [uncomplicate.commons.core :refer [Releaseable close! Info info]]
             [uncomplicate.clojure-sound
-             [internal :refer [name-key Support simple-name GetFormat  get-format]]
+             [internal :refer [name-key key-name Support supported simple-name GetFormat get-format
+                               extend-array-info]]
              [core :refer [write! read! SoundInfoProvider Open Timing Reset Broadcast Activity Type
                            Format SoundSystemProcedures file-format itype properties
                            sound-info]]])
@@ -30,8 +31,7 @@
 
 (defprotocol AudioSystemProcedures
   (audio-input-stream [this] [target-format source-stream])
-  (encodings [this] [target-format source-stream])
-  (convertible? [target source]))
+  (encodings [this] [target-format source-stream]))
 
 (defprotocol Available
   (available [this]))
@@ -61,6 +61,14 @@
    :speaker Port$Info/SPEAKER
    :compact-disc Port$Info/COMPACT_DISC
    :cd Port$Info/COMPACT_DISC})
+
+(def port-info-key
+  {Port$Info/MICROPHONE :microphone
+   Port$Info/HEADPHONE :headphone
+   Port$Info/LINE_IN :line-in
+   Port$Info/LINE_OUT :line-out
+   Port$Info/SPEAKER :speaker
+   Port$Info/COMPACT_DISC :compact-disc})
 
 (def line-key-class
   {:target TargetDataLine
@@ -121,11 +129,15 @@
    AudioFileFormat$Type/SND :snd
    AudioFileFormat$Type/WAVE :wave})
 
-(def control-type
+(def boolean-control
   {:apply-reverb BooleanControl$Type/APPLY_REVERB
-   :reverb EnumControl$Type/REVERB
-   :mute BooleanControl$Type/MUTE
-   :aux-return FloatControl$Type/AUX_RETURN
+   :mute BooleanControl$Type/MUTE})
+
+(def enum-control
+  {:reverb EnumControl$Type/REVERB})
+
+(def float-control
+  {:aux-return FloatControl$Type/AUX_RETURN
    :aux-send FloatControl$Type/AUX_SEND
    :balance FloatControl$Type/BALANCE
    :master-gain FloatControl$Type/MASTER_GAIN
@@ -135,6 +147,9 @@
    :sample-rate FloatControl$Type/SAMPLE_RATE
    :volume FloatControl$Type/VOLUME
    :vol FloatControl$Type/VOLUME})
+
+(def control-type
+  (merge boolean-control enum-control float-control))
 
 (def control-type-key
   {BooleanControl$Type/APPLY_REVERB :apply-reverb
@@ -150,6 +165,16 @@
    FloatControl$Type/SAMPLE_RATE :sample-rate
    FloatControl$Type/VOLUME :volume})
 
+(def control-class
+  {:boolean BooleanControl$Type
+   :enum EnumControl$Type
+   :float FloatControl$Type})
+
+(def control-class-key
+  {BooleanControl$Type :boolean
+   EnumControl$Type :enum
+   FloatControl$Type :float})
+
 (def line-event-type
   {:close LineEvent$Type/CLOSE
    :open LineEvent$Type/OPEN
@@ -161,6 +186,10 @@
    LineEvent$Type/OPEN :open
    LineEvent$Type/START :start
    LineEvent$Type/STOP :stop})
+
+(def sampled-type
+  (merge port-info line-key-class audio-encoding audio-file-format-type
+         control-type control-class line-event-type))
 
 ;; =========================== AudioSystem ====================================
 
@@ -190,15 +219,11 @@
     (AudioSystem/getAudioInputStream target ^AudioInputStream source))
   (encodings [source]
     (AudioSystem/getTargetEncodings source))
-  (convertible? [target source]
-    (AudioSystem/isConversionSupported target ^AudioFormat source))
   AudioFormat$Encoding
   (audio-input-stream [target source]
     (AudioSystem/getAudioInputStream target ^AudioInputStream source))
   (encodings [source]
-    (AudioSystem/getTargetEncodings source))
-  (convertible? [target source]
-    (AudioSystem/isConversionSupported target ^AudioFormat source)))
+    (AudioSystem/getTargetEncodings source)))
 
 (defn audio-file-types
   ([^AudioInputStream stream]
@@ -305,15 +330,15 @@
 (extend-type Keyword
   SoundInfoProvider
   (sound-info [kw]
-    (get port-info kw (ex-info "Unknown port info." {:type :sound-error
-                                                     :requested kw
-                                                     :supported (keys port-info)})))
+    (get sampled-type kw (ex-info "Unknown port info." {:type :sound-error
+                                                        :requested kw
+                                                        :supported (keys sampled-type)})))
   Support
   (supported
     ([kw]
      (AudioSystem/isLineSupported (sound-info kw)))
-    ([kw mxr]
-     (.isLineSupported ^Mixer mxr (sound-info kw)))))
+    ([kw obj]
+     (supported (get sampled-type kw kw) obj))))
 
 (extend-type Line$Info
   Info
@@ -354,7 +379,7 @@
 
 (defn line-info
   ([this]
-   (sound-info this))
+   (sound-info (sound-info this)))
   ([line-kind format]
    (DataLine$Info. (get line-key-class line-kind line-kind) format))
   ([line-kind format buffer-size]
@@ -402,7 +427,7 @@
   Type
   (itype [event]
     (let [event-type (.getType event)]
-      (get line-event-type event-type event-type))))
+      (get line-event-type-key event-type event-type))))
 
 (defn event [line event-type ^long position]
   (LineEvent. line (line-event-type event-type event-type) position))
@@ -632,7 +657,7 @@
 
 (defn mixer
   ([]
-   (map mixer (mixer-info)))
+   (AudioSystem/getMixer nil))
   ([^Mixer$Info info]
    (AudioSystem/getMixer info)))
 
@@ -649,13 +674,21 @@
 
 (defn source-info
   ([this]
-   (if (instance? Line$Info this)
-     (AudioSystem/getSourceLineInfo (sound-info this))
-     (.getSourceLineInfo ^Mixer this)))
+   (if (instance? Mixer this)
+     (.getSourceLineInfo ^Mixer this)
+     (AudioSystem/getSourceLineInfo (sound-info this))))
   ([^Mixer mixer info]
    (.getSourceLineInfo mixer (sound-info info))))
 
-(defn source [^Mixer mixer]
+(defn source
+  ([this]
+   (if (instance? Mixer this)
+     (map (partial line this) (.getSourceLineInfo ^Mixer this))
+     (map line (AudioSystem/getSourceLineInfo this))))
+  ([mixer info]
+   (map (partial line mixer) (source-info mixer info))))
+
+(defn open-sources [^Mixer mixer]
   (.getSourceLines mixer))
 
 (defn target-info
@@ -666,7 +699,15 @@
   ([^Mixer mixer info]
    (.getTargetLineInfo mixer (sound-info info))))
 
-(defn target [^Mixer mixer]
+(defn target
+  ([this]
+   (if (instance? Mixer this)
+     (map (partial line this) (.getTargetLineInfo ^Mixer this))
+     (map line (AudioSystem/getTargetLineInfo this))))
+  ([mixer info]
+   (map (partial line mixer) (target-info mixer info))))
+
+(defn open-targets [^Mixer mixer]
   (.getTargetLines mixer))
 
 (defn sync-supported?
@@ -726,7 +767,10 @@
      {:name (name-key (.toString this))})
     ([this info-type]
      (case info-type
-       :name (name-key (.toString this))))))
+       :name (name-key (.toString this)))))
+  Support
+  (supported [target source]
+    (AudioSystem/isConversionSupported target ^AudioFormat source)))
 
 (extend-type AudioFormat
   Info
@@ -751,7 +795,10 @@
     (.properties af))
   GetFormat
   (get-format [this]
-    this))
+    this)
+  Support
+  (support [target source]
+    (AudioSystem/isConversionSupported target ^AudioFormat source)))
 
 (defn audio-format
   ([from]
@@ -989,26 +1036,38 @@
   Info
   (info
     ([this]
-     {:name (.toString this)})
+     {:name (get control-type-key this (.toString this))
+      :type (let [clazz (class this)]
+               (get control-class-key clazz (simple-name clazz)))})
     ([this info-type]
      (case info-type
-       :name (.toString this)
+       :name (get control-type-key this (.toString this))
+       :type (let [clazz (class this)]
+                (get control-class-key clazz (simple-name clazz)))
        nil)))
   Support
   (supported [this line]
-    (.isControlSupported ^Line line this)))
+    (.isControlSupported ^Line line this))
+  Type
+  (itype [this]
+    (class this)))
 
 (extend-type Control
   Info
   (info
     ([this]
-     {:type (.toString (.getType this))
-      :value (value this)})
+     {:type (let [ctrl-type (.getType this)]
+              (get control-type-key ctrl-type ctrl-type))
+      :value (value this)
+      :kind (info (.getType this) :type)})
     ([this info-type]
-     (case info-type
-       :type (.toString (.getType this))
-       :value (value this)
-       nil)))
+     (let [t (itype this)]
+       (case info-type
+         :type (let [ctrl-type (.getType this)]
+                 (get control-type-key ctrl-type ctrl-type))
+         :value (value this)
+         :kind (info (.getType this) :type)
+         nil))))
   Type
   (itype [control]
     (.getType control)))
@@ -1064,7 +1123,7 @@
   (.getMidLabel control))
 
 (defn minimum ^double [^FloatControl control]
-  (.getMaximum control))
+  (.getMinimum control))
 
 (defn min-label [^FloatControl control]
   (.getMinLabel control))
@@ -1078,9 +1137,14 @@
 (defn update-period ^long [^FloatControl control]
   (.getUpdatePeriod control))
 
+(defn shift? [^FloatControl control]
+  (< -1 (.getUpdatePeriod control)))
+
 (defn shift!
   ([control ^long microseconds]
    (shift! control (minimum control) (maximum control) microseconds))
+  ([control ^long to ^long microseconds]
+   (shift! control (value control) to microseconds))
   ([^FloatControl control ^double from ^double to ^long microseconds]
    (.shift control from to microseconds)))
 
@@ -1120,6 +1184,33 @@
        :late-delay (late-delay this)
        :late-intensity (late-intensity this)
        nil))))
+
+;; =================== Sequential info for sampled arrays ==============================
+
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.Mixer$Info;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.Line$Info;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.DataLine$Info;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.Port$Info;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.Line;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.DataLine;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.Clip;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.Clip;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.SourceDataLine;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.TargetDataLine;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.Mixer;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.AudioFormat;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.AudioFormat$Encoding;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.AudioFileFormat;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.AudioFileFormat$Type;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.Control;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.BooleanControl;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.CompoundControl;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.EnumControl;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.FloatControl;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.LineEvent;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.LineEvent$Type;"))
+(extend-array-info (Class/forName "[Ljavax.sound.sampled.ReverbType;"))
+(extend-array-info (Class/forName "[Ljava.lang.Object;"))
 
 ;; =================== User friendly printing ==========================================
 

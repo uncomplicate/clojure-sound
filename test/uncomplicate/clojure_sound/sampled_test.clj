@@ -11,13 +11,12 @@
        (pos? (count (mixer-info))) => true
        (keys (info (first (mixer-info)))) => [:description :name :vendor :version]
        (info (first (mixer-info)) :vendor) => "ALSA (http://www.alsa-project.org)"
-       (mixer) => (map mixer (mixer-info))
-       (mixer (first (mixer-info))) => (first (mixer))
-       (mixer-info (first (mixer))) => (first (mixer-info)))
+       (mixer) => (mixer nil)
+       (mixer (first (filter #(includes? (info % :name) "[default]") (mixer-info)))) => (mixer))
 
 (with-release [noise (audio-input-stream (clojure.java.io/resource "Noise.wav"))]
   (let [noise-format (audio-format noise)
-        mxr (first (filter #(includes? (info % :name) "[default]") (mixer)))]
+        mxr (mixer)]
 
     (facts "Getting a line directly from audio system."
            (info noise-format :encoding) => :pcm-signed
@@ -55,10 +54,11 @@
              (pos? (count (target-info mxr))) => true
              (info (first (map line (target-info mxr))) :class) => "TargetDataLine"
              (map (comp line-class line) (source-info mxr)) => [SourceDataLine Clip]
-             (count (source mxr)) => 0
+             (count (open-sources mxr)) => 0
              (let [l (line (first (source-info mxr)))]
                (pos? (long (available l))) => false
                (open! l) => l
+               (count (open-sources mxr)) => 1
                (open? l) => true
                (pos? (long (available l))) => true
                (encoding (audio-format l)) => (encoding :pcm-signed)
@@ -113,14 +113,14 @@
 (facts "Synchronizing audio on multiple lines."
        (with-release [noise (audio-input-stream (clojure.java.io/resource "Noise.wav"))
                       noise-format (audio-format noise)
-                      mxr (first (filter #(includes? (info % :name) "[default]") (mixer)))
+                      mxr (mixer)
                       clip1 (line mxr (line-info :clip noise-format))
                       clip2 (line mxr (line-info :clip noise-format))
                       finished? (promise)]
          (listen! clip1 (partial deliver finished?) :stop)
          (supported? mxr [clip1 clip2]) => false
          (sync-supported? mxr [clip1 clip2]) => false
-         ;;(sync! mxr [clip1 clip2]) => mxr
+         (sync! mxr [clip1 clip2]) => (throws IllegalArgumentException)
          (open! clip1 noise) => clip1
          (open! clip2 noise) => clip2
          (start! clip1) => clip1
@@ -128,7 +128,7 @@
          @finished?))
 
 (facts "Capturing audio."
-       (with-release [mxr (first (filter #(includes? (info % :name) "[default]") (mixer)))
+       (with-release [mxr (mixer)
                       tgt (line mxr (line-info :target (audio-format 44100.0 16 2)))
                       src (line (line-info :source (audio-format 44100.0 16 2)))
                       finished? (promise)]
@@ -137,8 +137,31 @@
          (flush! tgt) => tgt
          (start! tgt) => tgt
          (read! tgt (byte-array 100)) => 100
+         (read! tgt (byte-array 100) 1 3) => (throws IllegalArgumentException)
          (seq (doto (byte-array (repeat 8 99))
                 (read! tgt 2 4))) => [99 99 0 0 0 0 99 99]
          (stop! tgt) => tgt
          (drain! tgt) => tgt
          @finished?))
+
+(facts "Getting a line that has the desired controls."
+       (with-release [mxr (open! (mixer))
+                      sdl (open! (first (source mxr)))
+                      gain-control (control sdl :master-gain)]
+         (info gain-control :type) => :master-gain
+         (info (map itype (control sdl)) :name) => [:master-gain :mute :balance :pan]
+         (info (control sdl) :kind) => [:float :boolean :float :float]
+         (value (control sdl :mute)) => false
+         (value (value! (control sdl :mute) true)) => true
+         (maximum gain-control) => (roughly 6 0.1)
+         (max-label gain-control) => "Maximum"
+         (minimum gain-control) => -80.0
+         (min-label gain-control) => "Minimum"
+         (units gain-control) => "dB"
+         (precision gain-control) => 0.625
+         (update-period gain-control) => -1
+         (shift? gain-control) => false))
+
+(facts "Getting a line that has the desired controls."
+       (with-release [sdl (open! (first (source (line-info :source))))]
+         (info (control sdl) :type) => [:master-gain :mute :balance :pan]))
