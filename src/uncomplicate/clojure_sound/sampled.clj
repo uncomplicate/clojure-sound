@@ -14,7 +14,7 @@
                                extend-array-info]]
              [core :refer [write! read! SoundInfoProvider Open Timing Reset Broadcast Activity Type
                            Format SoundSystemProcedures file-format itype properties
-                           sound-info]]])
+                           sound-info Available Channels]]])
   (:import java.net.URL
            [java.io File InputStream OutputStream]
            [java.security Permission]
@@ -32,9 +32,6 @@
 (defprotocol AudioSystemProcedures
   (audio-input-stream [this] [target-format source-stream])
   (encodings [this] [target-format source-stream]))
-
-(defprotocol Available
-  (available [this]))
 
 (defprotocol Frame
   (frame-length [this])
@@ -798,7 +795,10 @@
     this)
   Support
   (support [target source]
-    (AudioSystem/isConversionSupported target ^AudioFormat source)))
+    (AudioSystem/isConversionSupported target ^AudioFormat source))
+  Channels
+  (channels [format]
+    (.getChannels format)))
 
 (defn audio-format
   ([from]
@@ -841,9 +841,6 @@
   (if (instance? AudioFormat this)
     (.getEncoding ^AudioFormat this)
     (get audio-encoding this (AudioFormat$Encoding. (name this)))))
-
-(defn channels [^AudioFormat format]
-  (.getChannels format))
 
 (defn frame-rate ^double [^AudioFormat format]
   (.getFrameRate format))

@@ -18,7 +18,7 @@
                                ReceiverProvider get-receiver extend-array-info]]
              [core :refer [write! SoundInfoProvider Open Timing Reset Broadcast Activity Type
                            Format active? connect! micro-length division resolution
-                           properties property itype SoundSystemProcedures]]])
+                           properties property itype SoundSystemProcedures Available Channels]]])
   (:import [clojure.lang ILookup IFn]
            java.lang.reflect.Field
            java.net.URL
@@ -916,13 +916,13 @@
     (let [instruments (.getLoadedInstruments source)]
       (dotimes [i (alength instruments)]
         (.unloadInstrument ^Synthesizer synth! (aget instruments i)))
-      synth!)))
-
-(defn available [^Synthesizer synth]
-  (.getAvailableInstruments synth))
-
-(defn channels [^Synthesizer synth]
-  (.getChannels synth))
+      synth!))
+  Available
+  (available [synth]
+    (.getAvailableInstruments synth))
+  Channels
+  (channels [synth]
+    (.getChannels synth)))
 
 (defn latency ^long [^Synthesizer synth]
   (.getLatency synth))

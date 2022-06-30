@@ -250,6 +250,7 @@
            (info fluid :name) => "Fluid R3 GM"
            (load! synth fluid) => true
            (count (instruments synth)) => 189
+           (info (soundbank synth) :name) => "Emergency GM sound set"
            (open! sqcr)
            (sequence! sqcr maple)
            (open! synth)

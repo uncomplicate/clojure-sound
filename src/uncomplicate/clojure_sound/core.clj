@@ -54,6 +54,12 @@
   (properties [this])
   (byte-length [this]))
 
+(defprotocol Available
+  (available [this]))
+
+(defprotocol Channels
+  (channels [this]))
+
 (defn supported?
   ([feature]
    (supported feature))
