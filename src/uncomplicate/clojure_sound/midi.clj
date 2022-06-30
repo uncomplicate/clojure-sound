@@ -719,7 +719,7 @@
   ([f]
    (if (instance? MetaEventListener f)
      f
-     (meta-listener f -1))))
+     (meta-listener -1 f))))
 
 (deftype ControllerEventListenerFunction [f]
   Info

@@ -1,4 +1,4 @@
-(defproject org.uncomplicate/clojure-sound "0.2.0-SNAPSHOT"
+(defproject org.uncomplicate/clojure-sound "0.2.0"
   :description "Clojure Sound is a library for transforming digital media and communicating with MIDI devices."
   :url "https://github.com/uncomplicate/clojure-sound"
   :scm {:name "git"

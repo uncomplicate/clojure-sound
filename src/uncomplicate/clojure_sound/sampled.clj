@@ -426,7 +426,7 @@
     (let [event-type (.getType event)]
       (get line-event-type-key event-type event-type))))
 
-(defn event [line event-type ^long position]
+(defn line-event [line event-type ^long position]
   (LineEvent. line (line-event-type event-type event-type) position))
 
 ;; =================== DataLine ==========================================
