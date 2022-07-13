@@ -83,16 +83,16 @@
   {:active-sensing ShortMessage/ACTIVE_SENSING
    :channel-pressure ShortMessage/CHANNEL_PRESSURE
    :continue ShortMessage/CONTINUE
-   :cc ShortMessage/CONTROL_CHANGE
-   :exclusive-end ShortMessage/END_OF_EXCLUSIVE
-   :time ShortMessage/MIDI_TIME_CODE
+   :control-change ShortMessage/CONTROL_CHANGE
+   :end-of-exclusive ShortMessage/END_OF_EXCLUSIVE
+   :time-code ShortMessage/MIDI_TIME_CODE
    :off ShortMessage/NOTE_OFF
    :on ShortMessage/NOTE_ON
    :bend ShortMessage/PITCH_BEND
    :poly-pressure ShortMessage/POLY_PRESSURE
    :program-change ShortMessage/PROGRAM_CHANGE
-   :position ShortMessage/SONG_POSITION_POINTER
-   :select ShortMessage/SONG_SELECT
+   :song-position ShortMessage/SONG_POSITION_POINTER
+   :song-select ShortMessage/SONG_SELECT
    :start ShortMessage/START
    :stop ShortMessage/STOP
    :reset ShortMessage/SYSTEM_RESET
@@ -105,16 +105,16 @@
   {ShortMessage/ACTIVE_SENSING :active-sensing
    ShortMessage/CHANNEL_PRESSURE :channel-pressure
    ShortMessage/CONTINUE :continue
-   ShortMessage/CONTROL_CHANGE :cc
-   ShortMessage/END_OF_EXCLUSIVE :exclusive-end
-   ShortMessage/MIDI_TIME_CODE :time
+   ShortMessage/CONTROL_CHANGE :control-change
+   ShortMessage/END_OF_EXCLUSIVE :end-of-exclusive
+   ShortMessage/MIDI_TIME_CODE :time-code
    ShortMessage/NOTE_OFF :off
    ShortMessage/NOTE_ON :on
    ShortMessage/PITCH_BEND :bend
    ShortMessage/POLY_PRESSURE :poly-pressure
    ShortMessage/PROGRAM_CHANGE :program-change
-   ShortMessage/SONG_POSITION_POINTER :position
-   ShortMessage/SONG_SELECT :select
+   ShortMessage/SONG_POSITION_POINTER :song-position
+   ShortMessage/SONG_SELECT :song-select
    ShortMessage/START :start
    ShortMessage/STOP :stop
    ShortMessage/SYSTEM_RESET :reset
@@ -1290,11 +1290,11 @@
       144 {:key (data1 message) :velocity (data2 message)}
       160 {:key (data1 message) :velocity (data2 message)}
       176 (decode-controller (data1 message) (data2 message))
-      192 data1
-      208 data1
-      224 (short-little-endian data1 data2)
-      242 (short-little-endian data1 data2)
-      243 data1
+      192 (data1 message)
+      208 (data1 message)
+      224 (short-little-endian (data1 message) (data2 message))
+      242 (short-little-endian (data1 message) (data2 message))
+      243 (data1 message)
       246 :tune
       nil)))
 
@@ -1314,7 +1314,10 @@
   Info
   (info
     ([message]
-     (decode message))
+     {:status (status message)
+      :length (message-length message)
+      :bytes (message-bytes message)
+      :data (decode message)})
     ([message info-type]
      (case info-type
        :status (status message)
@@ -1336,6 +1339,7 @@
     ([sm! status data length]
      (.setMessage sm! (get command-type status status) data length)
      sm!))
+  Code
   (decode [message]
     (decode-vendor-specific (.getData message))))
 
