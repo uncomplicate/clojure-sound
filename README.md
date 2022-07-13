@@ -16,6 +16,8 @@ to provide nice interactive programming experience.
 
 I haven't written documentation for each function yet, but the whole [Java Sound tutorial](https://docs.oracle.com/javase/tutorial/sound/TOC.html) is covered as [midje tests](https://github.com/uncomplicate/clojure-sound/tree/master/test/clojure/uncomplicate/clojure_sound), which is even more useful because it shows how each function works in context of real use cases.
 
+You might also follow the tutorials that I write on [dragan.rocks](https://dragan.rocks)
+
 ## License
 
 Copyright © 2022-2022 Dragan Djuric
