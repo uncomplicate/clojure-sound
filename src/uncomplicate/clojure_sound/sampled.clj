@@ -518,13 +518,16 @@
   Frame
   (frame-length [clip]
     (.getFrameLength clip))
+  (frame-position [clip]
+    (.getFramePosition clip))
   Timing
   (micro-length [clip]
     (.getMicrosecondLength clip))
   (micro-position [line]
     (.getMicrosecondPosition line))
   (micro-position! [clip microseconds]
-    (.setMicrosecondPosition clip microseconds)))
+    (.setMicrosecondPosition clip microseconds)
+    clip))
 
 (defn clip
   ([]
